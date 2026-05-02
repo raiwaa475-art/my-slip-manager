@@ -1,65 +1,653 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useRef, useMemo, useEffect } from "react";
+import { 
+  Upload, FileText, CheckCircle2, AlertCircle, Loader2, 
+  Calendar, User, Tag, X, Play, BarChart3, Coins, 
+  Trash2, MousePointer2, CheckSquare, Square, Save, FastForward,
+  LayoutDashboard, Scan, Wallet, PiggyBank, Users, Receipt, LogOut
+} from "lucide-react";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+import Link from "next/link";
+import { ThemeToggle } from "./components/ui/ThemeToggle";
+import { createClient } from "@/lib/supabase/client";
+import LoginButton from "./components/LoginButton";
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+const CATEGORIES = [
+  { id: "อาหาร", label: "อาหาร", icon: "🍔" },
+  { id: "เดินทาง", label: "เดินทาง", icon: "🚗" },
+  { id: "ช้อปปิ้ง", label: "ช้อปปิ้ง", icon: "🛍️" },
+  { id: "บันเทิง", label: "บันเทิง", icon: "🎮" },
+  { id: "ค่าใช้จ่ายคงที่", label: "คงที่", icon: "🏠" },
+  { id: "อื่นๆ", label: "อื่นๆ", icon: "📦" },
+];
+
+interface AnalysisResult {
+  date: string;
+  amount: number;
+  receiver: string;
+  category: string;
+  confidence: number;
+  bank?: string;
+  qr_raw?: string;
+}
+
+interface SlipItem {
+  id: string;
+  file: File;
+  preview: string;
+  status: "pending" | "analyzing" | "done" | "error" | "saving" | "saved";
+  result: AnalysisResult;
+  error?: string;
+  selected: boolean;
+}
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [slips, setSlips] = useState<SlipItem[]>([]);
+  const [dashboards, setDashboards] = useState<any[]>([]);
+  const [selectedDashboardId, setSelectedDashboardId] = useState<string>("");
+  const [isProcessingAll, setIsProcessingAll] = useState(false);
+  const [isSavingAll, setIsSavingAll] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const supabase = createClient();
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchDashboards(session.user.id);
+      }
+      setLoading(false);
+    };
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchDashboards(session.user.id);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+
+  const fetchDashboards = async (userId: string) => {
+    try {
+      const { data: userDashboards, error: udError } = await supabase
+        .from('dashboard_users')
+        .select('dashboard_id')
+        .eq('user_id', userId);
+
+      if (udError) throw udError;
+
+      if (userDashboards && userDashboards.length > 0) {
+        const dashboardIds = userDashboards.map(d => d.dashboard_id);
+        const { data: dashs, error: dError } = await supabase
+          .from('dashboards')
+          .select('*')
+          .in('id', dashboardIds);
+        
+        if (dError) throw dError;
+        setDashboards(dashs || []);
+        if (dashs && dashs.length > 0) {
+          setSelectedDashboardId(dashs[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching dashboards:", err);
+    }
+  };
+
+  // Stats
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    const counts: Record<string, { count: number, total: number }> = {};
+    let todayCount = 0;
+    let todayTotal = 0;
+
+    slips.forEach((slip) => {
+      const date = slip.result.date;
+      const amount = Number(slip.result.amount) || 0;
+      
+      if (!counts[date]) counts[date] = { count: 0, total: 0 };
+      counts[date].count += 1;
+      counts[date].total += amount;
+
+      if (date === today) {
+        todayCount++;
+        todayTotal += amount;
+      }
+    });
+
+    return { todayCount, todayTotal, counts, today };
+  }, [slips]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const remainingSlots = 20 - slips.length;
+    const filesToProcess = files.slice(0, remainingSlots);
+
+    filesToProcess.forEach((file) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const newSlip: SlipItem = {
+          id: Math.random().toString(36).substr(2, 9),
+          file: file,
+          preview: reader.result as string,
+          status: "pending",
+          selected: false,
+          result: {
+            date: new Date().toISOString().split("T")[0],
+            amount: 0,
+            receiver: "รอกดสแกน...",
+            category: "อื่นๆ",
+            confidence: 0
+          }
+        };
+        setSlips((prev) => [...prev, newSlip]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const updateSlip = (id: string, updates: Partial<SlipItem> | { result: Partial<AnalysisResult> }) => {
+    setSlips((prev) => prev.map((s) => {
+      if (s.id !== id) return s;
+      if ('result' in updates) {
+        return { ...s, result: { ...s.result, ...updates.result } };
+      }
+      return { ...s, ...updates };
+    }));
+  };
+
+  const toggleSelect = (id: string) => {
+    updateSlip(id, { selected: !slips.find(s => s.id === id)?.selected });
+  };
+
+  const selectAll = () => {
+    const allSelected = slips.every(s => s.selected);
+    setSlips(prev => prev.map(s => ({ ...s, selected: !allSelected })));
+  };
+
+  const bulkUpdateCategory = (category: string) => {
+    setSlips(prev => prev.map(s => s.selected ? { ...s, result: { ...s.result, category } } : s));
+  };
+
+  const removeSelected = () => {
+    setSlips(prev => prev.filter(s => !s.selected));
+  };
+
+  const analyzeSingleSlip = async (id: string) => {
+    const slip = slips.find((s) => s.id === id);
+    if (!slip || slip.status === "analyzing") return;
+
+    updateSlip(id, { status: "analyzing", error: undefined });
+
+    try {
+      const response = await fetch("/api/analyze-slip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: slip.preview }),
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      updateSlip(id, { status: "done", result: data });
+    } catch (err: any) {
+      updateSlip(id, { status: "error", error: err.message });
+    }
+  };
+
+  const processAll = async () => {
+    setIsProcessingAll(true);
+    const pendingSlips = slips.filter((s) => s.status !== "done" && s.status !== "saved");
+    for (const slip of pendingSlips) {
+      await analyzeSingleSlip(slip.id);
+    }
+    setIsProcessingAll(false);
+  };
+
+  const saveToSupabase = async () => {
+    if (!user) return;
+    if (dashboards.length > 0 && !selectedDashboardId) {
+      alert("กรุณาเลือกแดชบอร์ดที่จะบันทึก");
+      return;
+    }
+    
+    setIsSavingAll(true);
+    
+    const slipsToSave = slips.filter(s => s.status === 'done');
+    
+    for (const slip of slipsToSave) {
+      updateSlip(slip.id, { status: "saving" });
+      try {
+        const insertData: any = {
+          user_id: user.id,
+          name: slip.result.receiver || "ไม่ระบุ",
+          amount: -Math.abs(slip.result.amount), // Expenses are negative
+          date: slip.result.date,
+          category: slip.result.category,
+          receiver: slip.result.receiver
+        };
+
+        if (selectedDashboardId) {
+          insertData.dashboard_id = selectedDashboardId;
+        }
+
+        const { error } = await supabase.from('transactions').insert(insertData);
+
+        if (error) throw error;
+        updateSlip(slip.id, { status: "saved" });
+      } catch (err: any) {
+        updateSlip(slip.id, { status: "error", error: "บันทึกล้มเหลว: " + err.message });
+      }
+    }
+    
+    setIsSavingAll(false);
+    // Remove saved slips after 2 seconds
+    setTimeout(() => {
+      setSlips(prev => prev.filter(s => s.status !== 'saved'));
+    }, 2000);
+  };
+
+  const selectedCount = slips.filter(s => s.selected).length;
+  const selectedTotal = slips.filter(s => s.selected).reduce((acc, s) => acc + (Number(s.result.amount) || 0), 0);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen bg-background items-center justify-center">
+        <Loader2 className="w-12 h-12 text-accent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen bg-background text-foreground transition-colors items-center justify-center p-6">
+        <div className="max-w-md w-full glass rounded-[2.5rem] p-10 md:p-12 border border-border bg-card/50 flex flex-col items-center text-center gap-8 shadow-2xl">
+          <div className="w-20 h-20 rounded-3xl bg-accent flex items-center justify-center text-white shadow-xl shadow-accent/20">
+            <Wallet className="w-10 h-10" />
+          </div>
+          <div className="space-y-3">
+            <h1 className="text-3xl font-black tracking-tight uppercase">FINANCE.AI</h1>
+            <p className="text-muted text-sm leading-relaxed">
+              จัดการทุกสลิปการโอนของคุณด้วย AI อัจฉริยะ <br />
+              เข้าสู่ระบบเพื่อเริ่มบันทึกข้อมูลและดูแดชบอร์ด
+            </p>
+          </div>
+          <LoginButton />
+          <div className="pt-4 border-t border-border w-full">
+            <ThemeToggle />
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen bg-background text-foreground transition-colors">
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex w-64 border-r border-border flex-col p-6 gap-8 bg-card sticky top-0 h-screen">
+        <div className="flex items-center gap-3">
+           <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center text-white">
+              <Wallet className="w-6 h-6" />
+           </div>
+           <span className="font-black text-xl tracking-tighter text-foreground">FINANCE.AI</span>
+        </div>
+
+        <nav className="flex-1 flex flex-col gap-2 w-full">
+           <Link href="/" className="flex items-center gap-4 p-3 rounded-xl bg-accent/10 text-accent border border-accent/20 transition-all">
+              <Scan className="w-6 h-6" />
+              <span className="font-bold">สแกนสลิป</span>
+           </Link>
+           <Link href="/dashboard" className="flex items-center gap-4 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-muted hover:text-foreground transition-all">
+              <LayoutDashboard className="w-6 h-6" />
+              <span className="font-medium">แดชบอร์ด</span>
+           </Link>
+        </nav>
+        
+        <div className="space-y-4 pt-6 border-t border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center overflow-hidden border border-indigo-500/20">
+              {user.user_metadata?.avatar_url ? (
+                <img src={user.user_metadata.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-4 h-4 text-indigo-500" />
+              )}
+            </div>
+            <div className="flex flex-col truncate">
+              <span className="text-xs font-bold truncate">{user.user_metadata?.full_name || user.email}</span>
+              <button 
+                onClick={() => supabase.auth.signOut()}
+                className="text-[10px] text-muted hover:text-red-500 flex items-center gap-1 font-bold"
+              >
+                <LogOut className="w-3 h-3" /> ออกจากระบบ
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <span className="text-sm font-medium text-muted">เปลี่ยนธีม</span>
+          </div>
+        </div>
+      </aside>
+
+      {/* Mobile Header & Bottom Nav */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-card border-b border-border z-50 flex items-center justify-between px-4">
+        <div className="flex items-center gap-2">
+           <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white">
+              <Wallet className="w-5 h-5" />
+           </div>
+           <span className="font-black text-lg tracking-tighter">FINANCE</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <button onClick={() => supabase.auth.signOut()} className="text-red-500"><LogOut className="w-5 h-5" /></button>
+        </div>
+      </div>
+
+      {/* Mobile Bottom Navigation */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-card border-t border-border z-50 flex items-center justify-around px-2 pb-4">
+         <div className="flex flex-col items-center gap-1 p-2 text-accent">
+            <Scan className="w-5 h-5" />
+            <span className="text-[10px] font-bold">สแกนสลิป</span>
+         </div>
+         <Link href="/dashboard" className="flex flex-col items-center gap-1 p-2 text-muted hover:text-foreground">
+            <LayoutDashboard className="w-5 h-5" />
+            <span className="text-[10px] font-medium">แดชบอร์ด</span>
+         </Link>
+         <button className="flex flex-col items-center gap-1 p-2 text-muted hover:text-foreground">
+            <PiggyBank className="w-5 h-5" />
+            <span className="text-[10px] font-medium">เป้าหมาย</span>
+         </button>
+      </div>
+
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-y-auto pt-16 pb-24 md:pt-0 md:pb-0">
+        <header className="sticky top-0 md:top-auto z-30 bg-background/80 md:bg-transparent backdrop-blur-xl border-b border-border md:border-none px-4 md:px-6 py-4">
+          <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                  <h1 className="text-2xl font-black gradient-text uppercase">ระบบสแกนสลิป</h1>
+                  <div className="h-6 w-[1px] bg-border hidden md:block" />
+                  
+                  {dashboards.length > 0 && (
+                    <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-1.5 shadow-sm">
+                      <LayoutDashboard className="w-4 h-4 text-indigo-500" />
+                      <select 
+                        value={selectedDashboardId} 
+                        onChange={(e) => setSelectedDashboardId(e.target.value)}
+                        className="bg-transparent text-xs font-bold outline-none cursor-pointer text-foreground"
+                      >
+                        {dashboards.map(d => (
+                          <option key={d.id} value={d.id} className="bg-card text-foreground">
+                            บันทึกลง: {d.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="h-6 w-[1px] bg-border hidden md:block" />
+                  <div className="flex items-center gap-3 text-sm text-muted">
+                     <span className="flex items-center gap-1"><Coins className="w-4 h-4" /> รวมวันนี้: <b className="text-foreground">฿{stats.todayTotal.toLocaleString()}</b></span>
+                     <span className="flex items-center gap-1"><FileText className="w-4 h-4" /> ทั้งหมด: <b className="text-foreground">{slips.length}</b> ใบ</span>
+                  </div>
+                </div>
+            
+            <div className="flex items-center gap-3 w-full md:w-auto">
+               <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 md:flex-none flex justify-center p-2.5 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-all text-foreground"
+               >
+                  <Upload className="w-5 h-5" />
+               </button>
+               <button 
+                  onClick={processAll}
+                  disabled={isProcessingAll || slips.length === 0}
+                  className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20"
+               >
+                  {isProcessingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <FastForward className="w-5 h-5" />}
+                  สแกนทั้งหมด
+               </button>
+               {slips.some(s => s.status === 'done') && (
+                 <button 
+                    onClick={saveToSupabase}
+                    disabled={isSavingAll}
+                    className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20"
+                 >
+                    {isSavingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                    บันทึกทั้งหมด
+                 </button>
+               )}
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-6 pb-32">
+          {slips.length > 0 && (
+            <div className="flex items-center justify-between bg-card p-3 rounded-2xl border border-border">
+              <button 
+                onClick={selectAll}
+                className="flex items-center gap-2 text-sm font-medium hover:text-indigo-500 transition-colors px-3 text-foreground"
+              >
+                {slips.every(s => s.selected) ? <CheckSquare className="w-5 h-5 text-indigo-500" /> : <Square className="w-5 h-5 text-muted" />}
+                เลือกทั้งหมด
+              </button>
+              
+              {selectedCount > 0 && (
+                <div className="flex items-center gap-4">
+                   <span className="text-sm font-bold text-indigo-500">เลือกแล้ว {selectedCount} ใบ</span>
+                   <button onClick={removeSelected} className="text-red-500 hover:text-red-400 p-2"><Trash2 className="w-5 h-5" /></button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {slips.length === 0 ? (
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className="group mt-12 cursor-pointer glass rounded-[2rem] p-12 md:p-24 border-dashed border-2 border-border flex flex-col items-center gap-6 text-center hover:border-indigo-500/50 transition-all bg-card/50"
+            >
+               <div className="p-6 rounded-full bg-indigo-500/10 group-hover:scale-110 transition-transform">
+                  <Upload className="w-12 h-12 text-indigo-500" />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xl md:text-2xl font-bold text-foreground">อัปโหลดสลิปเพื่อเริ่มบันทึก</p>
+                  <p className="text-sm md:text-base text-muted">ลากไฟล์มาวาง หรือคลิกเพื่อเลือกรูปภาพ (สูงสุด 20 รูป)</p>
+                </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {slips.map((slip, index) => (
+                <SlipRow 
+                  key={slip.id} 
+                  slip={slip} 
+                  index={index}
+                  onUpdate={(updates) => updateSlip(slip.id, updates)}
+                  onToggleSelect={() => toggleSelect(slip.id)}
+                  onAnalyze={() => analyzeSingleSlip(slip.id)}
+                  onRemove={() => setSlips(prev => prev.filter(s => s.id !== slip.id))}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </main>
+
+      {/* Floating Bulk Toolbar */}
+      {selectedCount > 0 && (
+        <div className="fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-12 duration-500">
+           <div className="glass rounded-2xl p-3 md:p-4 flex flex-col items-center gap-3 border border-indigo-500/40 shadow-2xl shadow-indigo-500/20 bg-card/90 backdrop-blur-xl">
+              <div className="flex gap-2 overflow-x-auto max-w-[90vw] pb-1">
+                {CATEGORIES.map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => bulkUpdateCategory(cat.id)}
+                    className="p-2 md:p-3 rounded-xl bg-background hover:bg-indigo-500/10 border border-border hover:border-indigo-500/50 transition-all flex flex-col items-center gap-1 min-w-[56px] md:min-w-[64px]"
+                  >
+                    <span className="text-lg md:text-xl">{cat.icon}</span>
+                    <span className="text-[9px] md:text-[10px] font-bold text-foreground">{cat.label}</span>
+                  </button>
+                ))}
+              </div>
+           </div>
+        </div>
+      )}
+
+      <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" multiple />
+    </div>
+  );
+}
+
+function SlipRow({ 
+  slip, 
+  index,
+  onUpdate, 
+  onToggleSelect, 
+  onAnalyze,
+  onRemove
+}: { 
+  slip: SlipItem, 
+  index: number,
+  onUpdate: (updates: Partial<SlipItem> | { result: Partial<AnalysisResult> }) => void,
+  onToggleSelect: () => void,
+  onAnalyze: () => void,
+  onRemove: () => void
+}) {
+  return (
+    <div className={cn(
+      "group relative flex flex-col md:flex-row glass rounded-3xl overflow-hidden border transition-all duration-300 bg-card",
+      slip.selected ? "border-indigo-500/50 bg-indigo-500/5 shadow-lg shadow-indigo-500/10" : 
+      slip.status === 'saved' ? "border-emerald-500/50 bg-emerald-500/5" : "border-border hover:border-muted"
+    )}>
+      <div 
+        onClick={onToggleSelect}
+        className="absolute top-4 left-4 z-20 cursor-pointer"
+      >
+        {slip.selected ? <CheckSquare className="w-6 h-6 text-indigo-500" /> : <Square className="w-6 h-6 text-muted group-hover:text-foreground transition-colors" />}
+      </div>
+
+      <div className="relative w-full md:w-56 h-48 md:h-auto overflow-hidden bg-black/10 border-b md:border-b-0 md:border-r border-border">
+        <div className="w-full h-full cursor-zoom-in transition-transform duration-500 hover:scale-150 origin-center flex items-center justify-center">
+          <img 
+            src={slip.preview} 
+            alt="Slip" 
+            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" 
+          />
+        </div>
+        {slip.status === 'pending' && (
+           <div className="absolute inset-0 bg-black/20 dark:bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <button 
+                onClick={(e) => { e.stopPropagation(); onAnalyze(); }}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white p-3 rounded-full shadow-xl"
+              >
+                <Play className="w-6 h-6" />
+              </button>
+           </div>
+        )}
+        {slip.status === 'analyzing' && (
+           <div className="absolute inset-0 bg-indigo-500/20 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
+              <Loader2 className="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-spin" />
+              <span className="text-[10px] font-bold tracking-tighter text-indigo-600 dark:text-indigo-400">SCANNING...</span>
+           </div>
+        )}
+        {slip.status === 'saving' && (
+           <div className="absolute inset-0 bg-emerald-500/20 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
+              <Loader2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400 animate-spin" />
+              <span className="text-[10px] font-bold tracking-tighter text-emerald-600 dark:text-emerald-400">SAVING...</span>
+           </div>
+        )}
+        {slip.status === 'saved' && (
+           <div className="absolute inset-0 bg-emerald-500/40 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
+              <CheckCircle2 className="w-10 h-10 text-white animate-bounce" />
+              <span className="text-xs font-black tracking-tighter text-white">SAVED!</span>
+           </div>
+        )}
+      </div>
+
+      <div className="flex-1 p-5 md:p-8 flex flex-col gap-5 md:gap-6">
+        <div className="flex justify-between items-start">
+           <div className="space-y-1 flex-1">
+              <span className="text-[10px] font-black text-indigo-500/80 tracking-widest uppercase">ผู้รับเงิน / ข้อมูล</span>
+              <p className="text-sm font-medium text-foreground truncate">{slip.result.receiver}</p>
+           </div>
+           <button onClick={onRemove} className="text-muted hover:text-red-500 transition-colors ml-4"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+           <div className="space-y-2">
+              <label className="text-[10px] font-black text-muted tracking-widest uppercase">ยอดเงิน (BAHT)</label>
+              <div className="relative group/input">
+                 <input 
+                    type="number"
+                    value={slip.result.amount || ""}
+                    onChange={(e) => onUpdate({ result: { amount: parseFloat(e.target.value) || 0 } })}
+                    placeholder="0.00"
+                    className="w-full bg-background border border-border focus:border-indigo-500/50 rounded-xl px-4 py-3 text-xl md:text-2xl font-bold text-foreground outline-none transition-all"
+                    tabIndex={index * 2 + 1}
+                 />
+                 <div className="absolute right-4 top-1/2 -translate-y-1/2 text-muted font-bold">฿</div>
+              </div>
+           </div>
+
+           <div className="space-y-2">
+              <label className="text-[10px] font-black text-muted tracking-widest uppercase">วันที่ (DATE)</label>
+              <div className="relative">
+                 <input 
+                    type="date"
+                    value={slip.result.date}
+                    onChange={(e) => onUpdate({ result: { date: e.target.value } })}
+                    className="w-full bg-background border border-border focus:border-indigo-500/50 rounded-xl px-4 py-3 text-base md:text-lg font-medium text-foreground outline-none transition-all"
+                    tabIndex={index * 2 + 2}
+                 />
+                 <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
+              </div>
+           </div>
+        </div>
+
+        <div className="space-y-3">
+           <label className="text-[10px] font-black text-muted tracking-widest uppercase">หมวดหมู่ (QUICK CATEGORY)</label>
+           <div className="flex flex-wrap gap-2">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => onUpdate({ result: { category: cat.id } })}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-medium border transition-all",
+                    slip.result.category === cat.id 
+                      ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" 
+                      : "bg-background border-border hover:border-muted text-muted hover:text-foreground"
+                  )}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+           </div>
+        </div>
+        
+        {slip.error && (
+          <p className="text-xs text-red-500 font-bold flex items-center gap-1">
+            <AlertCircle className="w-4 h-4" /> {slip.error}
+          </p>
+        )}
+      </div>
+
+      <div className={cn(
+        "absolute bottom-4 right-4 w-2 h-2 rounded-full",
+        slip.status === 'done' || slip.status === 'saved' ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" : 
+        slip.status === 'error' ? "bg-red-500" : "bg-border"
+      )} />
     </div>
   );
 }
