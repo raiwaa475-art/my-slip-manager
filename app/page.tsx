@@ -130,34 +130,66 @@ export default function Home() {
     return { todayCount, todayTotal, counts, today };
   }, [slips]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const resizeImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX_WIDTH = 1200;
+          const MAX_HEIGHT = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.7)); // บีบอัดเหลือ 70%
+        };
+      };
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
     const remainingSlots = 20 - slips.length;
     const filesToProcess = files.slice(0, remainingSlots);
 
-    filesToProcess.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const newSlip: SlipItem = {
-          id: Math.random().toString(36).substr(2, 9),
-          file: file,
-          preview: reader.result as string,
-          status: "pending",
-          selected: false,
-          result: {
-            date: new Date().toISOString().split("T")[0],
-            amount: 0,
-            receiver: "รอกดสแกน...",
-            category: "อื่นๆ",
-            confidence: 0
-          }
-        };
-        setSlips((prev) => [...prev, newSlip]);
+    for (const file of filesToProcess) {
+      const resizedBase64 = await resizeImage(file);
+      const newSlip: SlipItem = {
+        id: Math.random().toString(36).substr(2, 9),
+        file: file,
+        preview: resizedBase64,
+        status: "pending",
+        selected: false,
+        result: {
+          date: new Date().toISOString().split("T")[0],
+          amount: 0,
+          receiver: "รอกดสแกน...",
+          category: "อื่นๆ",
+          confidence: 0
+        }
       };
-      reader.readAsDataURL(file);
-    });
+      setSlips((prev) => [...prev, newSlip]);
+    }
   };
 
   const updateSlip = (id: string, updates: Partial<SlipItem> | { result: Partial<AnalysisResult> }) => {

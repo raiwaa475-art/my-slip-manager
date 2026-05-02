@@ -22,15 +22,10 @@ export async function POST(req: Request) {
       .threshold(180)
       .toBuffer();
 
-    // 2. Setup Tesseract Worker with Explicit Path for Windows/Next.js
-    // This fixes the "Cannot find module E:\ROOT" error
-    const workerPath = path.join(process.cwd(), "node_modules", "tesseract.js", "src", "worker-script", "node", "index.js");
+    // 2. Setup Tesseract Worker - Optimized for Vercel
+    // We remove the hardcoded node_modules path which fails on Vercel
+    const worker = await createWorker("tha+eng"); 
     
-    const worker = await createWorker("tha+eng", 1, {
-      workerPath: workerPath,
-      logger: m => console.log(m.status)
-    });
-
     const { data: { text } } = await worker.recognize(processedBuffer);
     await worker.terminate();
 
