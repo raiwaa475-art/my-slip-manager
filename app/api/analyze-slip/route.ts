@@ -22,9 +22,11 @@ export async function POST(req: Request) {
       .threshold(180)
       .toBuffer();
 
-    // 2. Setup Tesseract Worker - Optimized for Vercel
-    // We remove the hardcoded node_modules path which fails on Vercel
-    const worker = await createWorker("tha+eng"); 
+    // 2. Setup Tesseract Worker - Using CDN to fix 'node-fetch' error on Vercel
+    const worker = await createWorker("tha+eng", 1, {
+      workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@v5.1.1/dist/worker.min.js",
+      corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.1.0/tesseract-core.wasm.js",
+    }); 
     
     const { data: { text } } = await worker.recognize(processedBuffer);
     await worker.terminate();
