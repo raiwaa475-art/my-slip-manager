@@ -22,10 +22,13 @@ export async function POST(req: Request) {
       .threshold(180)
       .toBuffer();
 
-    // 2. Setup Tesseract Worker - Using CDN to fix 'node-fetch' error on Vercel
+    // 2. Setup Tesseract Worker - Using local path for Vercel/Node.js compatibility
+    // Node.js worker_threads requires a local file path, not a URL.
+    const workerPath = path.join(process.cwd(), "node_modules", "tesseract.js", "src", "worker-script", "node", "index.js");
+    
     const worker = await createWorker("tha+eng", 1, {
-      workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@v5.1.1/dist/worker.min.js",
-      corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.1.0/tesseract-core.wasm.js",
+      workerPath: workerPath,
+      // corePath can still be default as it's handled differently
     }); 
     
     const { data: { text } } = await worker.recognize(processedBuffer);

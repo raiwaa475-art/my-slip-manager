@@ -5,7 +5,7 @@ import {
   Upload, FileText, CheckCircle2, AlertCircle, Loader2, 
   Calendar, User, Tag, X, Play, BarChart3, Coins, 
   Trash2, MousePointer2, CheckSquare, Square, Save, FastForward,
-  LayoutDashboard, Scan, Wallet, PiggyBank, Users, Receipt, LogOut
+  LayoutDashboard, Scan, Wallet, PiggyBank, Users, Receipt, LogOut, Plus
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -55,6 +55,7 @@ export default function Home() {
   const [selectedDashboardId, setSelectedDashboardId] = useState<string>("");
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
+  const [showSaveToast, setShowSaveToast] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
 
@@ -165,6 +166,24 @@ export default function Home() {
     });
   };
 
+  const handleAddManual = () => {
+    const newSlip: SlipItem = {
+      id: Math.random().toString(36).substr(2, 9),
+      file: new File([], "manual"), // Dummy file
+      preview: "", // No preview
+      status: "done", // Mark as done so it can be saved immediately
+      selected: false,
+      result: {
+        date: new Date().toISOString().split("T")[0],
+        amount: 0,
+        receiver: "รายการใหม่",
+        category: "อื่นๆ",
+        confidence: 1
+      }
+    };
+    setSlips((prev) => [newSlip, ...prev]);
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -192,13 +211,23 @@ export default function Home() {
     }
   };
 
-  const updateSlip = (id: string, updates: Partial<SlipItem> | { result: Partial<AnalysisResult> }) => {
+  const updateSlip = (id: string, updates: any) => {
     setSlips((prev) => prev.map((s) => {
       if (s.id !== id) return s;
-      if ('result' in updates) {
-        return { ...s, result: { ...s.result, ...updates.result } };
+      
+      const newSlip = { ...s };
+      if (updates.result) {
+        newSlip.result = { ...s.result, ...updates.result };
       }
-      return { ...s, ...updates };
+      
+      // Update other properties
+      Object.keys(updates).forEach(key => {
+        if (key !== 'result') {
+          (newSlip as any)[key] = updates[key];
+        }
+      });
+      
+      return newSlip;
     }));
   };
 
@@ -247,6 +276,41 @@ export default function Home() {
       await analyzeSingleSlip(slip.id);
     }
     setIsProcessingAll(false);
+    if (slips.some(s => s.status === 'done' || s.status === 'pending')) {
+        setShowSaveToast(true);
+    }
+  };
+
+  const saveSingleSlip = async (id: string) => {
+    if (!user) return;
+    const slip = slips.find(s => s.id === id);
+    if (!slip || slip.status !== 'done') return;
+
+    updateSlip(id, { status: "saving" });
+    try {
+      const insertData: any = {
+        user_id: user.id,
+        name: slip.result.receiver || "ไม่ระบุ",
+        amount: -Math.abs(slip.result.amount),
+        date: slip.result.date,
+        category: slip.result.category,
+        receiver: slip.result.receiver
+      };
+
+      if (selectedDashboardId) {
+        insertData.dashboard_id = selectedDashboardId;
+      }
+
+      const { error } = await supabase.from('transactions').insert(insertData);
+      if (error) throw error;
+      
+      updateSlip(id, { status: "saved" });
+      setTimeout(() => {
+        setSlips(prev => prev.filter(s => s.id !== id));
+      }, 2000);
+    } catch (err: any) {
+      updateSlip(id, { status: "error", error: "บันทึกล้มเหลว: " + err.message });
+    }
   };
 
   const saveToSupabase = async () => {
@@ -406,8 +470,8 @@ export default function Home() {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto pt-16 pb-24 md:pt-0 md:pb-0">
-        <header className="sticky top-0 md:top-auto z-30 bg-background/80 md:bg-transparent backdrop-blur-xl border-b border-border md:border-none px-4 md:px-6 py-4">
-          <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <header className="sticky top-0 md:top-auto z-30 bg-background/80 md:bg-transparent backdrop-blur-xl border-b border-border md:border-none px-4 md:px-8 lg:px-12 py-4 md:py-8 lg:py-10">
+          <div className="max-w-[1400px] mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                   <h1 className="text-2xl font-black gradient-text uppercase">ระบบสแกนสลิป</h1>
                   <div className="h-6 w-[1px] bg-border hidden md:block" />
@@ -438,6 +502,12 @@ export default function Home() {
             
             <div className="flex items-center gap-3 w-full md:w-auto">
                <button 
+                  onClick={handleAddManual}
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 p-2.5 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-all text-foreground font-bold text-sm px-4"
+               >
+                  <Plus className="w-4 h-4" /> เพิ่มเอง
+               </button>
+               <button 
                   onClick={() => fileInputRef.current?.click()}
                   className="flex-1 md:flex-none flex justify-center p-2.5 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-all text-foreground"
                >
@@ -465,7 +535,7 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-6 pb-32">
+        <div className="max-w-[1400px] mx-auto p-4 md:p-8 lg:p-12 xl:p-16 space-y-6 md:space-y-10 pb-32">
           {slips.length > 0 && (
             <div className="flex items-center justify-between bg-card p-3 rounded-2xl border border-border">
               <button 
@@ -499,7 +569,7 @@ export default function Home() {
                 </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6 md:gap-8">
               {slips.map((slip, index) => (
                 <SlipRow 
                   key={slip.id} 
@@ -508,6 +578,7 @@ export default function Home() {
                   onUpdate={(updates) => updateSlip(slip.id, updates)}
                   onToggleSelect={() => toggleSelect(slip.id)}
                   onAnalyze={() => analyzeSingleSlip(slip.id)}
+                  handleRowSave={() => saveSingleSlip(slip.id)}
                   onRemove={() => setSlips(prev => prev.filter(s => s.id !== slip.id))}
                 />
               ))}
@@ -515,6 +586,39 @@ export default function Home() {
           )}
         </div>
       </main>
+
+      {/* Floating Save Prompt / Toolbar */}
+      {(slips.some(s => s.status === 'done') || showSaveToast) && (
+        <div className="fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-12 duration-500 w-full max-w-lg px-4">
+           <div className="glass rounded-[2rem] p-4 md:p-6 flex items-center justify-between gap-4 border border-emerald-500/40 shadow-2xl shadow-emerald-500/20 bg-card/95 backdrop-blur-2xl">
+              <div className="flex items-center gap-3">
+                 <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-emerald-500">
+                    <CheckCircle2 className="w-7 h-7" />
+                 </div>
+                 <div>
+                    <p className="text-sm font-black text-foreground">สแกนเสร็จเรียบร้อย!</p>
+                    <p className="text-[10px] text-muted font-bold uppercase tracking-tight">พร้อมบันทึก {slips.filter(s => s.status === 'done').length} รายการ</p>
+                 </div>
+              </div>
+              <div className="flex items-center gap-2">
+                 <button 
+                    onClick={() => setShowSaveToast(false)}
+                    className="p-3 text-muted hover:text-foreground transition-colors"
+                 >
+                    <X className="w-5 h-5" />
+                 </button>
+                 <button 
+                    onClick={() => { saveToSupabase(); setShowSaveToast(false); }}
+                    disabled={isSavingAll}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                 >
+                    {isSavingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    บันทึกตอนนี้
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
 
       {/* Floating Bulk Toolbar */}
       {selectedCount > 0 && (
@@ -547,13 +651,15 @@ function SlipRow({
   onUpdate, 
   onToggleSelect, 
   onAnalyze,
+  handleRowSave,
   onRemove
 }: { 
   slip: SlipItem, 
   index: number,
-  onUpdate: (updates: Partial<SlipItem> | { result: Partial<AnalysisResult> }) => void,
+  onUpdate: (updates: any) => void,
   onToggleSelect: () => void,
   onAnalyze: () => void,
+  handleRowSave: () => void,
   onRemove: () => void
 }) {
   return (
@@ -571,11 +677,18 @@ function SlipRow({
 
       <div className="relative w-full md:w-56 h-48 md:h-auto overflow-hidden bg-black/10 border-b md:border-b-0 md:border-r border-border">
         <div className="w-full h-full cursor-zoom-in transition-transform duration-500 hover:scale-150 origin-center flex items-center justify-center">
-          <img 
-            src={slip.preview} 
-            alt="Slip" 
-            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" 
-          />
+          {slip.preview ? (
+            <img 
+              src={slip.preview} 
+              alt="Slip" 
+              className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" 
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-2 text-muted">
+               <FileText className="w-10 h-10 opacity-20" />
+               <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">No Image</span>
+            </div>
+          )}
         </div>
         {slip.status === 'pending' && (
            <div className="absolute inset-0 bg-black/20 dark:bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -608,13 +721,19 @@ function SlipRow({
       </div>
 
       <div className="flex-1 p-5 md:p-8 flex flex-col gap-5 md:gap-6">
-        <div className="flex justify-between items-start">
-           <div className="space-y-1 flex-1">
-              <span className="text-[10px] font-black text-indigo-500/80 tracking-widest uppercase">ผู้รับเงิน / ข้อมูล</span>
-              <p className="text-sm font-medium text-foreground truncate">{slip.result.receiver}</p>
-           </div>
-           <button onClick={onRemove} className="text-muted hover:text-red-500 transition-colors ml-4"><X className="w-5 h-5" /></button>
-        </div>
+         <div className="flex justify-between items-start">
+            <div className="space-y-1 flex-1">
+               <span className="text-[10px] font-black text-indigo-500/80 tracking-widest uppercase">ผู้รับเงิน / ข้อมูล (แก้ไขได้)</span>
+               <input 
+                  type="text"
+                  value={slip.result.receiver}
+                  onChange={(e) => onUpdate({ result: { receiver: e.target.value } })}
+                  className="w-full bg-transparent border-none p-0 text-sm font-medium text-foreground outline-none focus:ring-0 placeholder:text-muted"
+                  placeholder="ระบุผู้รับเงิน..."
+               />
+            </div>
+            <button onClick={onRemove} className="text-muted hover:text-red-500 transition-colors ml-4"><X className="w-5 h-5" /></button>
+         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
            <div className="space-y-2">
@@ -672,6 +791,17 @@ function SlipRow({
           <p className="text-xs text-red-500 font-bold flex items-center gap-1">
             <AlertCircle className="w-4 h-4" /> {slip.error}
           </p>
+        )}
+
+        {slip.status === 'done' && (
+           <div className="pt-4 border-t border-border flex justify-end">
+              <button 
+                onClick={handleRowSave}
+                className="flex items-center gap-2 bg-emerald-600/10 hover:bg-emerald-600 text-emerald-600 hover:text-white px-6 py-2 rounded-xl font-bold text-sm transition-all border border-emerald-600/20"
+              >
+                <Save className="w-4 h-4" /> บันทึกรายการนี้
+              </button>
+           </div>
         )}
       </div>
 

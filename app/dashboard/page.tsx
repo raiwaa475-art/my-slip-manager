@@ -39,6 +39,7 @@ export default function Dashboard() {
   const [isMounted, setIsMounted] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
   const supabase = createClient();
   
@@ -261,26 +262,62 @@ export default function Dashboard() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert(txData)
-        .select()
-        .single();
-
-      if (error) throw error;
+      if (editingTransaction) {
+        const { error } = await supabase
+          .from('transactions')
+          .update(txData)
+          .eq('id', editingTransaction.id);
+        if (error) throw error;
+        
+        setTransactions(transactions.map(t => t.id === editingTransaction.id ? { ...t, ...txData } : t));
+      } else {
+        const { data, error } = await supabase
+          .from('transactions')
+          .insert(txData)
+          .select()
+          .single();
+        if (error) throw error;
+        setTransactions([data, ...transactions]);
+      }
       
-      setTransactions([data, ...transactions]);
       setIsModalOpen(false);
-      // Reset
-      setNewName("");
-      setNewAmount("");
-      setIsSplit(false);
-      setPeopleCount(2);
+      resetForm();
     } catch (err) {
-      console.error("Error adding transaction:", err);
+      console.error("Error saving transaction:", err);
       alert("เกิดข้อผิดพลาดในการบันทึก");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const resetForm = () => {
+    setNewName("");
+    setNewAmount("");
+    setNewDate(format(new Date(), "yyyy-MM-dd"));
+    setNewCategory("อาหาร");
+    setIsSplit(false);
+    setPeopleCount(2);
+    setEditingTransaction(null);
+  };
+
+  const handleEdit = (tx: any) => {
+    setEditingTransaction(tx);
+    setNewName(tx.receiver || tx.name.split(' (หาร')[0]);
+    setNewAmount(Math.abs(tx.amount).toString());
+    setNewDate(tx.date);
+    setNewCategory(tx.category);
+    setIsModalOpen(true);
+  };
+
+  const deleteTransaction = async (id: string) => {
+    if (!confirm("ยืนยันการลบรายการนี้?")) return;
+    try {
+      const { error } = await supabase.from('transactions').delete().eq('id', id);
+      if (error) throw error;
+      setTransactions(transactions.filter(t => t.id !== id));
+    } catch (err) {
+      console.error("Error deleting transaction:", err);
+      alert("ลบไม่สำเร็จ");
     }
   };
 
@@ -557,8 +594,8 @@ export default function Dashboard() {
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-4 pt-20 pb-24 md:p-10 lg:p-12">
-        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+      <main className="flex-1 overflow-y-auto p-4 pt-20 pb-24 md:p-8 lg:p-10 xl:p-14">
+        <div className="max-w-[1600px] mx-auto space-y-6 md:space-y-10">
           
           {/* Header */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -590,7 +627,7 @@ export default function Dashboard() {
                    <Users className="w-5 h-5" />
                 </button>
                 <button 
-                  onClick={() => setIsModalOpen(true)}
+                  onClick={() => { resetForm(); setIsModalOpen(true); }}
                   className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20"
                 >
                    <Plus className="w-5 h-5" />
@@ -603,7 +640,7 @@ export default function Dashboard() {
           </div>
 
           {/* Stat Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-4 md:gap-6 xl:gap-8">
             <StatCard 
                title="ยอดเงินคงเหลือ" 
                value={`฿${balance.toLocaleString()}`} 
@@ -639,9 +676,10 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Calendar View */}
-            <div className="lg:col-span-2 glass rounded-3xl p-5 md:p-8 border border-border bg-card/50">
+          {/* Charts Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8 xl:gap-10">
+             {/* Calendar View */}
+             <div className="lg:col-span-2 xl:col-span-3 glass rounded-3xl p-5 md:p-8 border border-border bg-card/50">
                <div className="flex justify-between items-center mb-6">
                   <h3 className="font-bold text-lg">ปฏิทินรายรับ-รายจ่าย</h3>
                   <div className="flex items-center gap-3">
@@ -728,7 +766,7 @@ export default function Dashboard() {
                <div style={{ width: '100%', height: 250 }}>
                   {isMounted && (
                     <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                      <AreaChart data={monthlyTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <AreaChart data={monthlyTrendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                         <defs>
                           <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
@@ -737,7 +775,14 @@ export default function Dashboard() {
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="opacity-10" vertical={false} />
                         <XAxis dataKey="name" stroke="currentColor" className="opacity-50 text-xs" tickLine={false} axisLine={false} />
-                        <YAxis stroke="currentColor" className="opacity-50 text-xs" tickLine={false} axisLine={false} />
+                        <YAxis 
+                           stroke="currentColor" 
+                           className="opacity-50 text-[10px] md:text-xs" 
+                           tickLine={false} 
+                           axisLine={false}
+                           width={45}
+                           tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}
+                         />
                         <RechartsTooltip 
                           contentStyle={{ background: 'var(--card)', borderColor: 'var(--border)', borderRadius: '12px', color: 'var(--foreground)' }}
                         />
@@ -770,25 +815,31 @@ export default function Dashboard() {
                      </thead>
                      <tbody className="divide-y divide-border">
                         {transactions.length > 0 ? transactions.map(tx => (
-                          <tr key={tx.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group block md:table-row">
-                             <td className="px-4 md:px-6 py-4 flex justify-between items-center md:table-cell">
-                                <div className="flex items-center gap-4">
-                                   <div className={cn(
-                                     "w-10 h-10 rounded-xl flex items-center justify-center font-bold shadow-sm group-hover:scale-110 transition-transform",
-                                     tx.amount > 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-card border border-border text-foreground"
-                                   )}>
-                                      {tx.name[0]}
+                          <tr key={tx.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group block md:table-row border-b border-border/50 md:border-none">
+                             <td className="px-4 md:px-6 py-4 flex flex-col md:table-cell">
+                                <div className="flex items-center justify-between md:justify-start gap-4">
+                                   <div className="flex items-center gap-4">
+                                      <div className={cn(
+                                        "w-10 h-10 rounded-xl flex items-center justify-center font-bold shadow-sm group-hover:scale-110 transition-transform",
+                                        tx.amount > 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-card border border-border text-foreground"
+                                      )}>
+                                         {tx.name[0]}
+                                      </div>
+                                      <div>
+                                         <span className="font-bold text-foreground block">{tx.name}</span>
+                                         <span className="text-xs text-muted md:hidden">{format(new Date(tx.date), "dd MMM yyyy")} • {tx.category}</span>
+                                      </div>
                                    </div>
-                                   <div>
-                                      <span className="font-bold text-foreground block md:inline">{tx.name}</span>
-                                      <span className="text-xs text-muted block md:hidden mt-0.5">{tx.date} • {tx.category}</span>
+                                   <div className={cn(
+                                      "font-black md:hidden text-lg whitespace-nowrap",
+                                      tx.amount > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"
+                                   )}>
+                                      {tx.amount > 0 ? "+" : ""}{tx.amount.toLocaleString()} ฿
                                    </div>
                                 </div>
-                                <div className={cn(
-                                  "font-black md:hidden",
-                                  tx.amount > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"
-                                )}>
-                                  {tx.amount > 0 ? "+" : ""}{tx.amount.toLocaleString()} {"฿"}
+                                <div className="flex md:hidden items-center justify-end gap-2 mt-3 pt-3 border-t border-border/30">
+                                   <button onClick={() => handleEdit(tx)} className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-500/10 text-indigo-500 rounded-lg font-bold text-xs"><Save className="w-4 h-4" /> แก้ไข</button>
+                                   <button onClick={() => deleteTransaction(tx.id)} className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-500/10 text-red-500 rounded-lg font-bold text-xs"><X className="w-4 h-4" /> ลบ</button>
                                 </div>
                              </td>
                              <td className="px-6 py-4 text-sm text-muted hidden md:table-cell">{tx.date}</td>
@@ -796,10 +847,16 @@ export default function Dashboard() {
                                 <span className="px-3 py-1 rounded-full bg-card border border-border text-xs font-medium text-foreground">{tx.category}</span>
                              </td>
                              <td className={cn(
-                               "px-6 py-4 text-right font-black hidden md:table-cell",
+                               "px-6 py-4 text-right font-black hidden md:table-cell whitespace-nowrap",
                                tx.amount > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"
                              )}>
-                                {tx.amount > 0 ? "+" : ""}{tx.amount.toLocaleString()} {"฿"}
+                                <div className="flex items-center justify-end gap-6">
+                                   <span className="text-lg">{tx.amount > 0 ? "+" : ""}{tx.amount.toLocaleString()} ฿</span>
+                                   <div className="flex items-center gap-2 opacity-40 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button onClick={() => handleEdit(tx)} className="p-2 hover:bg-indigo-500/10 text-muted hover:text-indigo-500 rounded-lg transition-colors border border-border/50"><Save className="w-4 h-4" /></button>
+                                      <button onClick={() => deleteTransaction(tx.id)} className="p-2 hover:bg-red-500/10 text-muted hover:text-red-500 rounded-lg transition-colors border border-border/50"><X className="w-4 h-4" /></button>
+                                   </div>
+                                </div>
                              </td>
                           </tr>
                         )) : (
@@ -818,11 +875,11 @@ export default function Dashboard() {
 
       {/* Add Transaction Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-           <div className="glass w-full max-w-lg rounded-[2.5rem] p-8 md:p-10 border border-white/20 shadow-2xl bg-card/95 relative overflow-y-auto max-h-[90vh]">
+        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+           <div className="glass w-full max-w-lg rounded-t-[2.5rem] md:rounded-[2.5rem] p-6 md:p-10 border-t md:border border-white/20 shadow-2xl bg-card/95 relative overflow-y-auto max-h-[95vh] md:max-h-[90vh]">
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors"
+                className="absolute top-4 right-4 md:top-6 md:right-6 p-2 hover:bg-white/10 rounded-full transition-colors"
               >
                 <X className="w-6 h-6 text-muted" />
               </button>
@@ -832,8 +889,12 @@ export default function Dashboard() {
                     <Plus className="w-8 h-8" />
                  </div>
                  <div>
-                    <h2 className="text-2xl font-black text-foreground uppercase tracking-tight">เพิ่มรายการใหม่</h2>
-                    <p className="text-sm text-muted">บันทึกรายรับหรือรายจ่ายของคุณ</p>
+                    <h2 className="text-2xl font-black text-foreground uppercase tracking-tight">
+                       {editingTransaction ? "แก้ไขรายการ" : "เพิ่มรายการใหม่"}
+                    </h2>
+                    <p className="text-sm text-muted">
+                       {editingTransaction ? "ปรับปรุงข้อมูลรายการของคุณ" : "บันทึกรายรับหรือรายจ่ายของคุณ"}
+                    </p>
                  </div>
               </div>
 
@@ -968,8 +1029,8 @@ export default function Dashboard() {
                     disabled={isSaving}
                     className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-500/20 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
                  >
-                    {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                    บันทึกรายการ
+                    {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : (editingTransaction ? <Save className="w-5 h-5" /> : <Plus className="w-5 h-5" />)}
+                    {editingTransaction ? "บันทึกการแก้ไข" : "เพิ่มรายการ"}
                  </button>
               </div>
            </div>
@@ -987,22 +1048,22 @@ function StatCard({ title, value, trend, icon, color, isNegative = false, classN
   };
 
   return (
-    <div className={cn("glass rounded-3xl p-5 md:p-6 lg:p-8 bg-gradient-to-br border", colorMap[color], className)}>
-       <div className="flex justify-between items-start mb-4 md:mb-6">
-          <div className="p-2.5 md:p-3 rounded-xl bg-white/50 dark:bg-black/20 shadow-sm backdrop-blur-md">{icon}</div>
+    <div className={cn("glass rounded-[2rem] p-4 md:p-6 lg:p-8 bg-gradient-to-br border", colorMap[color], className)}>
+       <div className="flex justify-between items-start mb-3 md:mb-6">
+          <div className="p-2 md:p-3 rounded-xl bg-white/50 dark:bg-black/20 shadow-sm backdrop-blur-md scale-90 md:scale-100">{icon}</div>
           <div className={cn(
-            "flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter",
+            "flex items-center gap-1 px-2 py-0.5 md:py-1 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-tighter",
             isNegative ? "bg-pink-500/20 text-pink-600 dark:text-pink-400" : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
           )}>
              {isNegative ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
-             {isNegative ? "รายจ่าย" : "รายรับ"}
+             {isNegative ? "จ่าย" : "รับ"}
           </div>
        </div>
-       <div className="space-y-1">
-          <p className="text-xs md:text-sm font-medium text-muted">{title}</p>
-          <p className="text-2xl md:text-3xl lg:text-4xl font-black text-foreground">{value}</p>
+       <div className="space-y-0.5 md:space-y-1">
+          <p className="text-[10px] md:text-sm font-medium text-muted truncate">{title}</p>
+          <p className="text-xl md:text-3xl lg:text-4xl font-black text-foreground truncate">{value}</p>
        </div>
-       <p className="mt-3 md:mt-4 text-[10px] md:text-xs text-muted font-medium">{trend}</p>
+       <p className="mt-2 md:mt-4 text-[9px] md:text-xs text-muted font-medium opacity-60">{trend}</p>
     </div>
   );
 }
