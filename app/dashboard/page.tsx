@@ -194,40 +194,47 @@ export default function Dashboard() {
   };
 
   const handleJoinDashboard = async () => {
-    if (!joinCode.trim() || !user) return;
+    const trimmedCode = joinCode.trim().toUpperCase();
+    if (!trimmedCode || !user) return;
     setIsProcessingSetup(true);
-    const code = joinCode.toUpperCase();
     
     try {
-      const { data: dash, error: dashErr } = await supabase.from('dashboards').select('*').eq('id', code).single();
+      // 1. ค้นหาแดชบอร์ดก่อน
+      const { data: dash, error: dashErr } = await supabase
+        .from('dashboards')
+        .select('*')
+        .eq('id', trimmedCode)
+        .single();
+
       if (dashErr || !dash) {
-        alert("ไม่พบแดชบอร์ดนี้ โปรดตรวจสอบรหัสอีกครั้ง");
+        console.error("Dashboard check error:", dashErr);
+        alert(`ไม่พบแดชบอร์ดรหัส "${trimmedCode}" โปรดตรวจสอบรหัสอีกครั้ง\n(หากมั่นใจว่าถูก โปรดตรวจสอบการตั้งค่า RLS ใน Supabase)`);
         setIsProcessingSetup(false);
         return;
       }
 
+      // 2. เพิ่มผู้ใช้เข้าสู่แดชบอร์ด
       const { error: insertUserErr } = await supabase.from('dashboard_users').insert({
-        dashboard_id: code,
+        dashboard_id: trimmedCode,
         user_id: user.id
       });
       
-      // Ignore "duplicate key" error (code 23505) - user is already a member
+      // ข้ามกรณีที่เป็นสมาชิกอยู่แล้ว (code 23505)
       if (insertUserErr && (insertUserErr as any).code !== '23505') {
         throw insertUserErr;
       }
 
-      // Refresh dashboards list
+      // 3. โหลดข้อมูลใหม่
       await fetchDashboards(user.id);
-      
-      // Explicitly set the joined dashboard as active
       setActiveDashboard(dash);
       fetchTransactions(dash.id);
       
       setSetupMode(null);
       setJoinCode("");
-    } catch (err) {
+      alert(`เข้าร่วมแดชบอร์ด "${dash.name}" สำเร็จ!`);
+    } catch (err: any) {
       console.error("Error joining dashboard:", err);
-      alert("เกิดข้อผิดพลาดในการเข้าร่วม");
+      alert("เกิดข้อผิดพลาดในการเข้าร่วม: " + (err.message || "Unknown error"));
     } finally {
       setIsProcessingSetup(false);
     }
