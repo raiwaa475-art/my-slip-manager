@@ -67,7 +67,7 @@ export function CategoryPieChart({ isMounted, data, totalExpense }: { isMounted:
   );
 }
 
-export function GroupContributionChart({ members, transactions, userId }: { members: { user_id: string }[], transactions: Transaction[], userId: string }) {
+export function GroupContributionChart({ isMounted, members, transactions, userId }: { isMounted: boolean, members: { user_id: string }[], transactions: Transaction[], userId: string }) {
   const data = members.map((m) => ({
     name: m.user_id === userId ? "คุณ" : `เพื่อน ${m.user_id.substring(0, 4)}`,
     amount: Math.abs(transactions.filter((t) => t.user_id === m.user_id && t.amount < 0).reduce((acc, t) => acc + t.amount, 0))
@@ -75,7 +75,19 @@ export function GroupContributionChart({ members, transactions, userId }: { memb
   return (
     <>
       <div className="flex justify-between items-center mb-8"><div><h3 className="font-bold text-lg">สัดส่วนการออกเงินในกลุ่ม</h3><p className="text-xs text-muted">ดูว่าใครเป็นคนออกเงินกองกลางไปเท่าไหร่แล้ว</p></div><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-indigo-500" /><span className="text-xs font-bold">ยอดจ่ายรวม</span></div></div>
-      <div style={{ width: '100%', height: 300 }}><ResponsiveContainer width="100%" height="100%"><BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fontWeight: 600 }} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} tickFormatter={(v) => `฿${v}`} /><RechartsTooltip cursor={{ fill: 'var(--accent)', opacity: 0.1 }} contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px' }} /><Bar dataKey="amount" fill="var(--accent)" radius={[10, 10, 0, 0]} barSize={40} /></BarChart></ResponsiveContainer></div>
+      <div style={{ width: '100%', height: 300 }} className="min-w-0 min-h-0">
+        {isMounted ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fontWeight: 600 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} tickFormatter={(v) => `฿${v}`} />
+              <RechartsTooltip cursor={{ fill: 'var(--accent)', opacity: 0.1 }} contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px' }} />
+              <Bar dataKey="amount" fill="var(--accent)" radius={[10, 10, 0, 0]} barSize={40} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : <div className="w-full h-full flex items-center justify-center text-muted text-sm italic">กำลังโหลด...</div>}
+      </div>
     </>
   );
 }

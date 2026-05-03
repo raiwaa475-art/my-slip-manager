@@ -83,7 +83,7 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
             <div className="lg:col-span-2 xl:col-span-3 glass rounded-3xl p-5 md:p-8 border border-border bg-card/50">
-              {dash.activeDashboard?.type !== "split_bill" ? <CalendarView activeMonth={activeMonth} transactions={tx.transactions} /> : <GroupContributionChart members={guests.members} transactions={tx.transactions} userId={user.id} />}
+              {dash.activeDashboard?.type !== "split_bill" ? <CalendarView activeMonth={activeMonth} transactions={tx.transactions} /> : <GroupContributionChart isMounted={isMounted} members={guests.members} transactions={tx.transactions} userId={user.id} />}
             </div>
             <CategoryPieChart isMounted={isMounted} data={categoryData} totalExpense={totalExpense} />
           </div>

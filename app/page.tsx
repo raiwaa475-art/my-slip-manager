@@ -146,7 +146,7 @@ export default function Home() {
       <aside className="hidden md:flex w-64 border-r border-border flex-col p-6 gap-8 bg-card sticky top-0 h-screen">
         <div className="flex items-center gap-3">
            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center relative">
-              <Image src="/logo.png" alt="Logo" fill className="object-cover" />
+              <Image src="/logo.png" alt="Logo" fill className="object-cover" sizes="40px" />
            </div>
            <span className="font-black text-xl tracking-tighter text-foreground">FINANCE.AI</span>
         </div>
@@ -166,7 +166,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center overflow-hidden border border-indigo-500/20 relative">
               {user.user_metadata?.avatar_url ? (
-                <Image src={user.user_metadata.avatar_url} alt="avatar" fill className="object-cover" />
+                <Image src={user.user_metadata.avatar_url} alt="avatar" fill className="object-cover" sizes="32px" />
               ) : (
                 <UserIcon className="w-4 h-4 text-indigo-500" />
               )}
