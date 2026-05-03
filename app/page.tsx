@@ -140,8 +140,8 @@ export default function Home() {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement("canvas");
-          const MAX_WIDTH = 1200;
-          const MAX_HEIGHT = 1200;
+          const MAX_WIDTH = 2000;
+          const MAX_HEIGHT = 2000;
           let width = img.width;
           let height = img.height;
 
@@ -160,7 +160,7 @@ export default function Home() {
           canvas.height = height;
           const ctx = canvas.getContext("2d");
           ctx?.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/jpeg", 0.7)); // บีบอัดเหลือ 70%
+          resolve(canvas.toDataURL("image/jpeg", 0.9)); // เพิ่มคุณภาพเป็น 90%
         };
       };
     });
@@ -192,23 +192,30 @@ export default function Home() {
     const filesToProcess = files.slice(0, remainingSlots);
 
     for (const file of filesToProcess) {
-      const resizedBase64 = await resizeImage(file);
-      const newSlip: SlipItem = {
-        id: Math.random().toString(36).substr(2, 9),
-        file: file,
-        preview: resizedBase64,
-        status: "pending",
-        selected: false,
-        result: {
-          date: new Date().toISOString().split("T")[0],
-          amount: 0,
-          receiver: "รอกดสแกน...",
-          category: "อื่นๆ",
-          confidence: 0
-        }
-      };
-      setSlips((prev) => [...prev, newSlip]);
+      try {
+        const resizedBase64 = await resizeImage(file);
+        const newSlip: SlipItem = {
+          id: Math.random().toString(36).substr(2, 9),
+          file: file,
+          preview: resizedBase64,
+          status: "pending",
+          selected: false,
+          result: {
+            date: new Date().toISOString().split("T")[0],
+            amount: 0,
+            receiver: "รอกดสแกน...",
+            category: "อื่นๆ",
+            confidence: 0
+          }
+        };
+        setSlips((prev) => [...prev, newSlip]);
+      } catch (err) {
+        console.error("Error processing file:", file.name, err);
+      }
     }
+    
+    // Clear input so same file can be uploaded again
+    if (e.target) e.target.value = "";
   };
 
   const updateSlip = (id: string, updates: any) => {

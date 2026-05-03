@@ -8,7 +8,7 @@ import {
 import { 
   TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, 
   Calendar as CalendarIcon, Download, LayoutDashboard, Scan, PiggyBank, Receipt,
-  Plus, Users, X, ChevronDown, Check, Save, LogOut, User as UserIcon, Loader2
+  Plus, Users, X, ChevronDown, Check, Save, LogOut, User as UserIcon, Loader2, Pencil, Trash2
 } from "lucide-react";
 import Link from "next/link";
 import { clsx, type ClassValue } from "clsx";
@@ -21,6 +21,23 @@ import LoginButton from "../components/LoginButton";
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+// Custom scrollbar styles
+const scrollbarStyles = `
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(155, 155, 155, 0.1);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(155, 155, 155, 0.2);
+  }
+`;
 
 const CATEGORIES = [
   { id: "อาหาร", label: "อาหาร", icon: "🍔", color: "#6366f1" },
@@ -236,6 +253,90 @@ export default function Dashboard() {
     } catch (err: any) {
       console.error("Error joining dashboard:", err);
       alert("เกิดข้อผิดพลาดในการเข้าร่วม: " + (err.message || "Unknown error"));
+    } finally {
+      setIsProcessingSetup(false);
+    }
+  };
+
+  const handleLeaveDashboard = async (dashboardId: string) => {
+    if (!user || !confirm("ยืนยันการออกจากแดชบอร์ดนี้?")) return;
+    try {
+      const { error } = await supabase
+        .from('dashboard_users')
+        .delete()
+        .eq('dashboard_id', dashboardId)
+        .eq('user_id', user.id);
+      
+      if (error) throw error;
+      
+      const updatedDashboards = dashboards.filter(d => d.id !== dashboardId);
+      setDashboards(updatedDashboards);
+      
+      if (activeDashboard?.id === dashboardId) {
+        if (updatedDashboards.length > 0) {
+          setActiveDashboard(updatedDashboards[0]);
+          fetchTransactions(updatedDashboards[0].id);
+        } else {
+          setActiveDashboard(null);
+          setTransactions([]);
+          setSetupMode("choose");
+        }
+      }
+    } catch (err) {
+      console.error("Error leaving dashboard:", err);
+      alert("ออกจากแดชบอร์ดไม่สำเร็จ");
+    }
+  };
+
+  const handleDeleteDashboard = async (dashboardId: string) => {
+    if (!user || !confirm("!!! คำเตือน: ยืนยันการลบแดชบอร์ด? ข้อมูลทั้งหมดรวมถึงรายการธุรกรรมจะถูกลบถาวร !!!")) return;
+    
+    setIsProcessingSetup(true);
+    try {
+      // 1. ลบรายการธุรกรรมที่เกี่ยวข้องก่อน (เพื่อป้องกัน Foreign Key Error)
+      const { error: txError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('dashboard_id', dashboardId);
+      
+      if (txError) console.warn("Could not delete transactions, might be empty or RLS restricted:", txError);
+
+      // 2. ลบความสัมพันธ์ผู้ใช้ (dashboard_users)
+      const { error: duError } = await supabase
+        .from('dashboard_users')
+        .delete()
+        .eq('dashboard_id', dashboardId);
+      
+      if (duError) throw duError;
+
+      // 3. ลบตัวแดชบอร์ดเอง
+      const { error: dError } = await supabase
+        .from('dashboards')
+        .delete()
+        .eq('id', dashboardId)
+        .eq('created_by', user.id);
+      
+      if (dError) throw dError;
+      
+      // อัปเดต UI
+      const updatedDashboards = dashboards.filter(d => d.id !== dashboardId);
+      setDashboards(updatedDashboards);
+      
+      if (activeDashboard?.id === dashboardId) {
+        if (updatedDashboards.length > 0) {
+          const nextDash = updatedDashboards[0];
+          setActiveDashboard(nextDash);
+          fetchTransactions(nextDash.id);
+        } else {
+          setActiveDashboard(null);
+          setTransactions([]);
+          setSetupMode("choose");
+        }
+      }
+      alert("ลบแดชบอร์ดสำเร็จ");
+    } catch (err: any) {
+      console.error("Error deleting dashboard:", err);
+      alert("ลบแดชบอร์ดไม่สำเร็จ: " + (err.message || "คุณอาจไม่มีสิทธิ์ลบ หรือเกิดข้อผิดพลาดที่ฐานข้อมูล"));
     } finally {
       setIsProcessingSetup(false);
     }
@@ -516,6 +617,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors">
+      <style>{scrollbarStyles}</style>
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 border-r border-border flex-col p-6 gap-8 bg-card sticky top-0 h-screen">
         <div className="flex items-center gap-3">
@@ -525,15 +627,64 @@ export default function Dashboard() {
            <span className="font-black text-xl tracking-tighter text-foreground">FINANCE.AI</span>
         </div>
 
-        <nav className="flex-1 flex flex-col gap-2 w-full">
-           <Link href="/" className="flex items-center gap-4 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-muted hover:text-foreground transition-all">
+        <nav className="flex-1 flex flex-col gap-2 w-full overflow-y-auto pr-2 custom-scrollbar">
+           <Link href="/" className="flex items-center gap-4 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-muted hover:text-foreground transition-all shrink-0">
               <Scan className="w-6 h-6" />
               <span className="font-medium">สแกนสลิป</span>
            </Link>
-           <Link href="/dashboard" className="flex items-center gap-4 p-3 rounded-xl bg-accent/10 text-accent border border-accent/20 transition-all">
-              <LayoutDashboard className="w-6 h-6" />
-              <span className="font-bold">แดชบอร์ด</span>
-           </Link>
+           <div className="mt-4 mb-2 px-3 text-[10px] font-black text-muted uppercase tracking-widest">แดชบอร์ดของคุณ</div>
+           <div className="flex flex-col gap-1">
+              {dashboards.map(dash => (
+                <div key={dash.id} className="group flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      setActiveDashboard(dash);
+                      fetchTransactions(dash.id);
+                    }}
+                    className={cn(
+                      "flex-1 flex items-center gap-3 p-3 rounded-xl transition-all text-left",
+                      activeDashboard?.id === dash.id 
+                        ? "bg-accent/10 text-accent border border-accent/20" 
+                        : "text-muted hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground border border-transparent"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-2 h-2 rounded-full",
+                      activeDashboard?.id === dash.id ? "bg-accent animate-pulse" : "bg-muted/40"
+                    )} />
+                    <span className={cn("font-bold text-sm truncate", activeDashboard?.id === dash.id ? "" : "font-medium")}>
+                      {dash.name}
+                    </span>
+                  </button>
+                  <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity pr-1">
+                    {dash.created_by === user.id ? (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteDashboard(dash.id); }}
+                        className="p-1.5 text-muted hover:text-red-500 rounded-lg hover:bg-red-500/10 transition-colors"
+                        title="ลบแดชบอร์ด"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleLeaveDashboard(dash.id); }}
+                        className="p-1.5 text-muted hover:text-amber-500 rounded-lg hover:bg-amber-500/10 transition-colors"
+                        title="ออกจากแดชบอร์ด"
+                      >
+                        <LogOut className="w-3.5 h-3.5 rotate-180" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <button 
+                onClick={() => setSetupMode("choose")}
+                className="flex items-center gap-3 p-3 rounded-xl text-indigo-500 hover:bg-indigo-500/10 transition-all border border-dashed border-indigo-500/30 mt-2"
+              >
+                <Plus className="w-5 h-5" />
+                <span className="font-bold text-sm">สร้าง/เข้าร่วมใหม่</span>
+              </button>
+           </div>
         </nav>
         
         <div className="space-y-4 pt-6 border-t border-border">
@@ -564,16 +715,42 @@ export default function Dashboard() {
 
       {/* Mobile Header & Bottom Nav */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-card border-b border-border z-50 flex items-center justify-between px-4">
-        <div className="flex items-center gap-2">
-           <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white">
+        <div className="flex items-center gap-2 overflow-hidden">
+           <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white shrink-0">
               <Wallet className="w-5 h-5" />
            </div>
-           <span className="font-black text-lg tracking-tighter">FINANCE</span>
+           <div className="flex flex-col overflow-hidden">
+              <span className="font-black text-xs tracking-tighter opacity-50 uppercase">FINANCE.AI</span>
+              <span className="font-bold text-sm truncate max-w-[120px]">{activeDashboard?.name || "แดชบอร์ด"}</span>
+           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setSetupMode("join")} className="text-muted hover:text-foreground p-1"><Users className="w-5 h-5" /></button>
+        <div className="flex items-center gap-2">
+          {dashboards.length > 1 && (
+            <div className="relative group">
+              <button className="p-2 bg-black/5 dark:bg-white/5 rounded-lg text-muted">
+                <ChevronDown className="w-5 h-5" />
+              </button>
+              <div className="absolute right-0 top-full mt-2 w-48 bg-card border border-border rounded-xl shadow-xl opacity-0 invisible group-focus-within:opacity-100 group-focus-within:visible transition-all z-[100] p-1">
+                {dashboards.map(dash => (
+                  <button 
+                    key={dash.id}
+                    onClick={() => {
+                      setActiveDashboard(dash);
+                      fetchTransactions(dash.id);
+                    }}
+                    className={cn(
+                      "w-full text-left p-3 rounded-lg text-xs font-bold transition-all",
+                      activeDashboard?.id === dash.id ? "bg-accent/10 text-accent" : "hover:bg-black/5 dark:hover:bg-white/5"
+                    )}
+                  >
+                    {dash.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <button onClick={() => setSetupMode("choose")} className="text-muted hover:text-foreground p-2 bg-black/5 dark:bg-white/5 rounded-lg"><Plus className="w-5 h-5" /></button>
           <ThemeToggle />
-          <button onClick={() => supabase.auth.signOut()} className="text-red-500 p-1"><LogOut className="w-5 h-5" /></button>
         </div>
       </div>
 
@@ -838,8 +1015,8 @@ export default function Dashboard() {
                                    </div>
                                 </div>
                                 <div className="flex md:hidden items-center justify-end gap-2 mt-3 pt-3 border-t border-border/30">
-                                   <button onClick={() => handleEdit(tx)} className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-500/10 text-indigo-500 rounded-lg font-bold text-xs"><Save className="w-4 h-4" /> แก้ไข</button>
-                                   <button onClick={() => deleteTransaction(tx.id)} className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-500/10 text-red-500 rounded-lg font-bold text-xs"><X className="w-4 h-4" /> ลบ</button>
+                                   <button onClick={() => handleEdit(tx)} className="flex-1 flex items-center justify-center gap-2 py-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg font-bold text-xs"><Pencil className="w-4 h-4" /> แก้ไข</button>
+                                   <button onClick={() => deleteTransaction(tx.id)} className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-500/10 text-red-500 rounded-lg font-bold text-xs"><Trash2 className="w-4 h-4" /> ลบ</button>
                                 </div>
                              </td>
                              <td className="px-6 py-4 text-sm text-muted hidden md:table-cell">{tx.date}</td>
@@ -852,9 +1029,9 @@ export default function Dashboard() {
                              )}>
                                 <div className="flex items-center justify-end gap-6">
                                    <span className="text-lg">{tx.amount > 0 ? "+" : ""}{tx.amount.toLocaleString()} ฿</span>
-                                   <div className="flex items-center gap-2 opacity-40 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button onClick={() => handleEdit(tx)} className="p-2 hover:bg-indigo-500/10 text-muted hover:text-indigo-500 rounded-lg transition-colors border border-border/50"><Save className="w-4 h-4" /></button>
-                                      <button onClick={() => deleteTransaction(tx.id)} className="p-2 hover:bg-red-500/10 text-muted hover:text-red-500 rounded-lg transition-colors border border-border/50"><X className="w-4 h-4" /></button>
+                                   <div className="flex items-center gap-2 opacity-60 md:opacity-0 group-hover:opacity-100 transition-all">
+                                      <button onClick={() => handleEdit(tx)} className="p-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg transition-all border border-amber-500/20 shadow-sm" title="แก้ไข"><Pencil className="w-4 h-4" /></button>
+                                      <button onClick={() => deleteTransaction(tx.id)} className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-all border border-red-500/20 shadow-sm" title="ลบ"><Trash2 className="w-4 h-4" /></button>
                                    </div>
                                 </div>
                              </td>

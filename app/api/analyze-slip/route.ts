@@ -15,20 +15,25 @@ export async function POST(req: Request) {
     const base64Data = image.split(",")[1];
     const buffer = Buffer.from(base64Data, "base64");
 
-    // 1. Image Pre-processing for better OCR
+    // 1. Image Pre-processing for better OCR (Aggressive for small text)
     const processedBuffer = await sharp(buffer)
+      .resize(2000) // Much larger for better OCR of small text
       .grayscale()
       .normalize()
-      .threshold(180)
+      .sharpen()
+      .threshold(170) // Convert to high-contrast black and white
       .toBuffer();
 
-    // 2. Setup Tesseract Worker - Using local path for Vercel/Node.js compatibility
-    // Node.js worker_threads requires a local file path, not a URL.
-    const workerPath = path.join(process.cwd(), "node_modules", "tesseract.js", "src", "worker-script", "node", "index.js");
+    // 2. Setup Tesseract Worker
+    const workerPath = path.join(process.cwd(), "node_modules/tesseract.js/src/worker-script/node/index.js");
+    const corePath = path.join(process.cwd(), "node_modules/tesseract.js-core/tesseract-core.wasm.js");
     
     const worker = await createWorker("tha+eng", 1, {
-      workerPath: workerPath,
-      // corePath can still be default as it's handled differently
+      workerPath,
+      corePath,
+      langPath: path.join(process.cwd(), "lang-data"),
+      cachePath: path.join(process.cwd(), "lang-data"),
+      gzip: false,
     }); 
     
     const { data: { text } } = await worker.recognize(processedBuffer);
@@ -42,94 +47,123 @@ export async function POST(req: Request) {
         if (code) qrData = code.data;
     } catch (e) {}
 
-    // Text Normalization for better matching
+    // 4. Text Normalization and Cleaning
+    const lines = text.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 2);
+
+    const cleanText = lines.filter(line => !line.match(/(?:Krungthai|กรุงไทย|จ่ายบิล|สำเร็จ|รหัสอ้างอิง|Transaction|Reference|บันทึก)/i)).join(' ');
     const normalizedText = text.replace(/\s+/g, ' ');
 
-    // 4. Amount Extraction
+    // 5. Amount Extraction
     let amount = 0;
-    const amountRegex = /(?:จำนวนเงิน|Amount|ยอดโอน|ยอดเงิน|Total|Sum)\s*[:]?\s*([\d,]+\.\d{2})/i;
-    const amountMatch = normalizedText.match(amountRegex) || normalizedText.match(/([\d,]+\.\d{2})/);
+    const amountRegex = /(?:จำนวนเงิน|Amount|ยอดโอน|ยอดเงิน|Total|Sum|เงิน)\s*[:]?\s*([\d,]+\.\d{2})/i;
+    const amountMatch = cleanText.match(amountRegex) || normalizedText.match(/([\d,]+\.\d{2})/);
     if (amountMatch) {
-      amount = parseFloat(amountMatch[1] || amountMatch[0].replace(/,/g, ""));
+      amount = parseFloat((amountMatch[1] || amountMatch[0]).replace(/,/g, ""));
     }
 
-    // 5. Date Extraction
+    // 6. Date Extraction (Improved for accuracy)
     let date = new Date().toISOString().split("T")[0];
     
-    const thaiMonths = [
-      "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
-      "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
-    ];
+    const thaiMonthsShort = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+    const thaiMonthsFull = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+    const engMonthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     
-    const engMonths = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-      "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"
-    ];
-
-    // Try Thai date pattern
-    const thaiDateRegex = new RegExp(`(\\d{1,2})\\s+(${thaiMonths.join("|")})\\s+(\\d{2,4})`, "i");
-    const thaiDateMatch = normalizedText.match(thaiDateRegex);
-    
-    // Try English date pattern
-    const engDateRegex = new RegExp(`(\\d{1,2})\\s+(${engMonths.join("|")})\\s+(\\d{2,4})`, "i");
-    const engDateMatch = normalizedText.match(engDateRegex);
-
-    if (thaiDateMatch || engDateMatch) {
-      const match = (thaiDateMatch || engDateMatch)!;
-      let [_, d, m, y] = match;
-      
-      let monthIdx;
-      if (thaiDateMatch) {
-        monthIdx = (thaiMonths.indexOf(m) % 12) + 1;
-      } else {
-        monthIdx = (engMonths.findIndex(em => em.toLowerCase() === m.toLowerCase()) % 12) + 1;
+    // Patterns to try in order of reliability
+    const patterns = [
+      // 1. Thai Date: 02 พ . ค . 2569 or 12 ม.ค. 67
+      {
+        regex: /(\d{1,2})\s+([ก-ฮ\s\.]+)\s+(\d{2,4})/,
+        type: 'thai'
+      },
+      // 2. Numeric Date: 12/01/2024 or 12-01-2567
+      {
+        regex: /(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{2,4})/,
+        type: 'numeric'
+      },
+      // 3. English Date: 12 Jan 2024
+      {
+        regex: /(\d{1,2})[\s\.\-\/]*([a-z]{3,10})[\s\.\-\/]*(\d{2,4})/i,
+        type: 'eng'
       }
-      
-      let yearNum = parseInt(y);
-      if (yearNum < 100) yearNum += 2500; 
-      if (yearNum > 2400) yearNum -= 543;
-      else if (yearNum < 100) yearNum += 2000;
-      
-      date = `${yearNum}-${monthIdx.toString().padStart(2, "0")}-${d.padStart(2, "0")}`;
-    } else {
-      // Try numeric pattern: dd/mm/yyyy or yyyy-mm-dd
-      const isoMatch = normalizedText.match(/(\d{4})[\-\/](\d{1,2})[\-\/](\d{1,2})/);
-      if (isoMatch) {
-        date = `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
-      } else {
-        const slashMatch = normalizedText.match(/(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{2,4})/);
-        if (slashMatch) {
-          let [_, d, m, y] = slashMatch;
-          let yearNum = parseInt(y);
-          if (yearNum < 100) yearNum += 2000;
-          if (yearNum > 2400) yearNum -= 543;
-          date = `${yearNum}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    ];
+
+    let dateFound = false;
+
+    for (const pattern of patterns) {
+      const match = normalizedText.match(pattern.regex);
+      if (match) {
+        let [_, d, m, y] = match;
+        let day = parseInt(d);
+        let month = 0;
+        let year = parseInt(y);
+
+        if (pattern.type === 'thai') {
+          // Fuzzy match Thai month: Remove ALL spaces and dots for comparison
+          const cleanM = m.replace(/[\s\.]/g, "");
+          
+          let bestIdx = -1;
+          
+          // First pass: Match against short forms (without dots)
+          bestIdx = thaiMonthsShort.findIndex(tm => {
+            const tmClean = tm.replace(/[\s\.]/g, "");
+            return cleanM === tmClean || cleanM.includes(tmClean) || tmClean.includes(cleanM);
+          });
+
+          if (bestIdx === -1) {
+            // Second pass: Match against full names
+            bestIdx = thaiMonthsFull.findIndex(tm => tm.includes(cleanM) || cleanM.includes(tm.substring(0, 3)));
+          }
+
+          if (bestIdx !== -1) {
+            month = bestIdx + 1;
+          }
+        } else if (pattern.type === 'numeric') {
+          month = parseInt(m);
+        } else if (pattern.type === 'eng') {
+          const monthIdx = engMonthsShort.findIndex(em => m.toLowerCase().startsWith(em.toLowerCase()));
+          if (monthIdx !== -1) month = monthIdx + 1;
+        }
+
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          // Adjust Year
+          if (year < 100) {
+            // 2-digit year logic
+            if (year >= 60 && year <= 75) year = 2500 + year - 543; // e.g., 67 -> 2024
+            else year = 2000 + year; // e.g., 24 -> 2024
+          } else if (year > 2400) {
+            year -= 543; // BE to AD
+          }
+
+          date = `${year}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+          dateFound = true;
+          break;
         }
       }
     }
 
-    // 6. Receiver Extraction
-    let receiver = "ไม่ระบุ";
-    const receiverRegex = /(?:ไปยัง|โอนให้|To|Receiver|ชื่อผู้รับ|Name)\s*[:]?\s*([^\n\r]+)/i;
-    const receiverMatch = normalizedText.match(receiverRegex);
-    if (receiverMatch) {
-      receiver = receiverMatch[1].trim().substring(0, 50);
-    } else {
-      const nameMatch = normalizedText.match(/(นาย|นาง|น\.ส\.|บริษัท|บจก\.|Mr\.|Ms\.|Mrs\.)\s*([^\n\r]+)/);
-      if (nameMatch) {
-          receiver = (nameMatch[1] + nameMatch[2]).trim().substring(0, 50);
-      }
-    }
+    // Logging raw text for debugging (Optional, but helpful)
+    console.log("--- OCR RAW TEXT ---");
+    console.log(text);
+    console.log("--- EXTRACTED DATE ---");
+    console.log(date);
+    console.log("--------------------");
 
-    // 7. Bank Extraction (Optional but helpful for receiver field)
+    // 7. Receiver Extraction (User requested to use default instead of extracting)
+    let receiver = ""; // Default empty, user will fill it manually
+    
+    // 8. Bank Extraction (Keep only as a hint in parentheses if needed, or skip)
     const banks = ["KBank", "SCB", "Krungthai", "KTB", "Bangkok Bank", "BBL", "TMB", "Thanachart", "ttb", "GSB", "Bay", "Krungsri"];
     for (const bank of banks) {
         if (text.toLowerCase().includes(bank.toLowerCase())) {
-            if (receiver === "ไม่ระบุ") receiver = bank;
-            else receiver = `${receiver} (${bank})`;
+            receiver = bank;
             break;
         }
     }
+
+    if (!receiver) receiver = "รายการจากสลิป";
+    
 
     return NextResponse.json({
       date: date,
