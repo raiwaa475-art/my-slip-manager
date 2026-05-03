@@ -13,11 +13,8 @@ import { ThemeToggle } from "./components/ui/ThemeToggle";
 import { createClient } from "@/lib/supabase/client";
 import LoginButton from "./components/LoginButton";
 import { CATEGORIES } from "@/lib/constants";
-import { cn } from "@/lib/utils";
 import { useToast } from "./components/ui/Toast";
-import type { User, Dashboard, Transaction, SlipItem, AnalysisResult } from "../types";
-import { createWorker, type Worker } from "tesseract.js";
-import jsQR from "jsqr";
+
 
 // Import Refactored Components
 import { SlipRow } from "./components/SlipRow";
@@ -31,10 +28,10 @@ export default function Home() {
   const { toast } = useToast();
   const { user, loading, dashboards, selectedDashboardId, setSelectedDashboardId, signOut } = useAuth();
   const { 
-    slips, setSlips, isProcessingAll, isSavingAll, worker,
-    addManualSlip, handleFileUpload, updateSlip, toggleSelect, 
-    selectAll, removeSelected, analyzeSingleSlip, processAll, 
-    saveSingleSlip, saveAll 
+    slips, setSlips, isProcessingAll, isSavingAll,
+    addManualSlip, handleFileUpload, updateSlip,
+    selectAll, removeSelected, processAll, 
+    saveAll 
   } = useSlips();
 
   const [showSaveToast, setShowSaveToast] = useState(false);
@@ -259,7 +256,7 @@ export default function Home() {
                <button onClick={() => fileInputRef.current?.click()} className="flex-1 md:flex-none flex justify-center p-2.5 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-all text-foreground">
                   <Upload className="w-5 h-5" />
                </button>
-               <button onClick={processAll} disabled={isProcessingAll || slips.length === 0} className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">
+               <button onClick={handleProcessAll} disabled={isProcessingAll || slips.length === 0} className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">
                   {isProcessingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <FastForward className="w-5 h-5" />}
                   สแกนทั้งหมด
                </button>

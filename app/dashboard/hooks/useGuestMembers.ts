@@ -4,10 +4,15 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Dashboard } from "../../../types";
 import { useToast } from "@/app/components/ui/Toast";
+import { useAuth } from "../../contexts/AuthContext";
 
 export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDashboard: (dash: Dashboard | null) => void) {
   const { toast } = useToast();
-  const [guestMembers, setGuestMembers] = useState<string[]>([]);
+  const { updateDashboardMetadata } = useAuth();
+  
+  // ใช้ข้อมูลจาก activeDashboard โดยตรง ไม่ต้องมี State แยก
+  const guestMembers = activeDashboard?.metadata?.guest_members || [];
+  
   const [newGuestName, setNewGuestName] = useState("");
   const [promptPayId, setPromptPayId] = useState("");
   const [paymentType, setPaymentType] = useState<'promptpay' | 'bank'>('promptpay');
@@ -34,22 +39,10 @@ export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDash
 
   useEffect(() => {
     if (activeDashboard) {
-      if (activeDashboard.metadata?.guest_members) {
-        setGuestMembers(activeDashboard.metadata.guest_members);
-      } else {
-        setGuestMembers([]);
-      }
-      
-      if (activeDashboard.metadata?.promptpay_id) {
-        setPromptPayId(activeDashboard.metadata.promptpay_id);
-      } else {
-        setPromptPayId("");
-      }
-
+      setPromptPayId(activeDashboard.metadata?.promptpay_id || "");
       setPaymentType(activeDashboard.metadata?.payment_type || 'promptpay');
       setBankAccountNumber(activeDashboard.metadata?.bank_account_number || "");
       setBankName(activeDashboard.metadata?.bank_name || "");
-
       fetchMembers(activeDashboard.id);
     }
   }, [activeDashboard, fetchMembers]);
@@ -61,52 +54,31 @@ export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDash
     const currentMetadata = activeDashboard.metadata || {};
     
     try {
-      await supabase
-        .from('dashboards')
-        .update({ metadata: { ...currentMetadata, guest_members: updatedGuests } })
-        .eq('id', activeDashboard.id);
-        
-      setGuestMembers(updatedGuests);
-      setNewGuestName("");
-      setActiveDashboard({
-        ...activeDashboard,
-        metadata: { ...currentMetadata, guest_members: updatedGuests }
+      await updateDashboardMetadata(activeDashboard.id, { 
+        ...currentMetadata, 
+        guest_members: updatedGuests 
       });
-      toast("เพิ่มเพื่อนชั่วคราวสำเร็จ", "success");
+      setNewGuestName("");
     } catch (err) {
-      console.error("Error adding guest member:", err);
-      toast("เพิ่มไม่สำเร็จ", "error");
+      console.error("🚨 [useGuestMembers] Error adding guest member:", err);
     }
   };
 
   const handleRemoveGuest = async (name: string) => {
     if (!activeDashboard) return;
     
-    const previous = [...guestMembers];
-    const updatedGuests = guestMembers.filter(g => g !== name);
+    // กรองชื่อที่ต้องการลบออก
+    const updatedGuests = guestMembers.filter((g: string) => g !== name);
     const currentMetadata = activeDashboard.metadata || {};
     
-    // Optimistic Update
-    setGuestMembers(updatedGuests);
-    
     try {
-      const { error } = await supabase
-        .from('dashboards')
-        .update({ metadata: { ...currentMetadata, guest_members: updatedGuests } })
-        .eq('id', activeDashboard.id);
-        
-      if (error) throw error;
-
-      setActiveDashboard({
-        ...activeDashboard,
-        metadata: { ...currentMetadata, guest_members: updatedGuests }
+      console.log(`🗑️ [useGuestMembers] Removing ${name}, new list:`, updatedGuests);
+      await updateDashboardMetadata(activeDashboard.id, { 
+        ...currentMetadata, 
+        guest_members: updatedGuests 
       });
-      toast(`ลบ "${name}" สำเร็จ`, "success");
     } catch (err) {
-      console.error("Error removing guest member:", err);
-      // Rollback
-      setGuestMembers(previous);
-      toast("ลบไม่สำเร็จ กรุณาลองใหม่", "error");
+      console.error("🚨 [useGuestMembers] Error removing guest member:", err);
     }
   };
 
@@ -122,20 +94,10 @@ export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDash
     };
 
     try {
-      await supabase
-        .from('dashboards')
-        .update({ metadata: updatedMetadata })
-        .eq('id', activeDashboard.id);
-        
-      setActiveDashboard({
-        ...activeDashboard,
-        metadata: updatedMetadata
-      });
+      await updateDashboardMetadata(activeDashboard.id, updatedMetadata);
       setIsSettingsOpen(false);
-      toast("บันทึกข้อมูลการรับเงินสำเร็จ", "success");
     } catch (err) {
-      console.error("Error saving payment settings:", err);
-      toast("บันทึกไม่สำเร็จ", "error");
+      console.error("🚨 [useGuestMembers] Error saving payment settings:", err);
     }
   };
 

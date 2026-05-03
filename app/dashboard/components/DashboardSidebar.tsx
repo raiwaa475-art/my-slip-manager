@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "../../components/ui/ThemeToggle";
 import { User, Dashboard } from "../../../types";
 import { cn } from "@/lib/utils";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface DashboardSidebarProps {
   user: User;
@@ -28,7 +29,8 @@ export function DashboardSidebar({
   handleDeleteDashboard, 
   handleLeaveDashboard
 }: DashboardSidebarProps) {
-  const supabase = useMemo(() => createClient(), []);
+  const { signOut } = useAuth();
+
   return (
     <>
       {/* Desktop Sidebar */}
@@ -114,7 +116,7 @@ export function DashboardSidebar({
             <div className="flex flex-col truncate">
               <span className="text-xs font-bold truncate">{user.user_metadata?.full_name || user.email}</span>
               <button 
-                onClick={() => supabase.auth.signOut()}
+                onClick={signOut}
                 className="text-[10px] text-muted hover:text-red-500 flex items-center gap-1 font-bold"
               >
                 <LogOut className="w-3 h-3" /> ออกจากระบบ

@@ -48,7 +48,7 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
   }, [supabase]);
 
   useEffect(() => {
-    let subscription: any = null;
+    let subscription: unknown = null;
 
     const setupSubscription = (dashboardId: string | null) => {
       const channel = supabase
@@ -71,7 +71,7 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
             } else if (payload.eventType === 'UPDATE') {
               setTransactions(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
             } else if (payload.eventType === 'DELETE') {
-              setTransactions(prev => prev.filter(t => t.id === payload.old.id));
+              setTransactions(prev => prev.filter(t => t.id !== payload.old.id));
             }
           }
         )
@@ -101,7 +101,8 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
 
     return () => {
       if (subscription) {
-        supabase.removeChannel(subscription);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabase.removeChannel(subscription as any);
       }
     };
   }, [activeDashboardId, user, fetchTransactions, supabase]);

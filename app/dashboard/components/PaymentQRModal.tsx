@@ -4,6 +4,7 @@ import { X, Download } from "lucide-react";
 import Image from "next/image";
 import { DebtItem } from "../../../types";
 import { useToast } from "@/app/components/ui/Toast";
+import { THAI_BANKS } from "@/lib/constants";
 
 interface PaymentQRModalProps {
   isOpen: boolean;
@@ -58,10 +59,15 @@ export function PaymentQRModal({
                  </div>
                </>
              ) : paymentType === 'bank' && bankAccountNumber ? (
-               <div className="py-8 px-4 flex flex-col items-center gap-2">
+               <div className="py-8 px-4 flex flex-col items-center gap-4 w-full">
                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">โอนเข้าบัญชีธนาคาร</p>
-                 <p className="text-xl font-black text-zinc-800">{bankName}</p>
-                 <p className="text-2xl font-black text-indigo-600 tracking-wider">{bankAccountNumber}</p>
+                 <div className="flex flex-col items-center gap-3">
+                   {THAI_BANKS.find(b => b.name === bankName)?.logo && (
+                     <img src={THAI_BANKS.find(b => b.name === bankName)?.logo} alt={bankName} className="w-12 h-12 rounded-xl object-contain shadow-md border border-zinc-100" />
+                   )}
+                   <p className="text-xl font-black text-zinc-800">{bankName}</p>
+                 </div>
+                 <p className="text-2xl font-black text-indigo-600 tracking-wider bg-indigo-50 px-6 py-2 rounded-2xl w-full text-center">{bankAccountNumber}</p>
                  <div className="mt-4 text-center">
                     <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">ยอดที่ต้องโอน</p>
                     <p className="text-lg font-black text-zinc-800">฿{selectedDebt.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/app/components/ui/Toast";
 import { useDashboard } from "../hooks/useDashboard";
+import { THAI_BANKS } from "@/lib/constants";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -97,15 +98,37 @@ export function SettingsModal({
             <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-muted uppercase tracking-widest px-2">
-                  ธนาคาร
+                  เลือกธนาคาร
                 </label>
-                <input
-                  type="text"
-                  value={bankName}
-                  onChange={e => setBankName(e.target.value)}
-                  placeholder="เช่น กสิกรไทย, ไทยพาณิชย์"
-                  className="w-full bg-background border border-border rounded-xl px-4 py-3 outline-none text-center font-bold"
-                />
+                <div className="grid grid-cols-4 gap-2 max-h-[160px] overflow-y-auto p-2 rounded-2xl bg-black/20 custom-scrollbar">
+                  {THAI_BANKS.map(bank => (
+                    <button
+                      key={bank.id}
+                      onClick={() => setBankName(bank.name)}
+                      className={cn(
+                        "aspect-square rounded-xl flex flex-col items-center justify-center gap-1 p-2 transition-all border-2",
+                        bankName === bank.name 
+                          ? "bg-indigo-600/20 border-indigo-500 scale-95" 
+                          : "bg-background border-transparent hover:border-border"
+                      )}
+                      title={bank.name}
+                    >
+                      {bank.logo ? (
+                        <img src={bank.logo} alt={bank.name} className="w-8 h-8 rounded-lg object-contain shadow-sm" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-[10px] font-bold">?</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {bankName && (
+                  <div className="mt-2 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                    {THAI_BANKS.find(b => b.name === bankName)?.logo && (
+                      <img src={THAI_BANKS.find(b => b.name === bankName)?.logo} className="w-6 h-6 rounded-md" />
+                    )}
+                    <span className="text-sm font-bold text-indigo-500">{bankName}</span>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-muted uppercase tracking-widest px-2">

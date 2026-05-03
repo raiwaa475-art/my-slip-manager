@@ -15,7 +15,7 @@
 | `lib/` | Shared Utilities และ Configuration |
 | `lib/supabase/` | Supabase Client setup (Client & Server side) |
 | `types/index.ts` | TypeScript Interfaces (หัวใจหลักของข้อมูลในระบบ) |
-| `middleware.ts` | จัดการ Session และ Auth State (Supabase SSR) |
+| `proxy.ts` | จัดการ Session และ Auth State (Supabase SSR) |
 
 ---
 
@@ -40,7 +40,7 @@
     *   `BulkSaveModal.tsx`: ตั้งค่าการหารแบบกลุ่มสำหรับหลายสลิปพร้อมกัน
 
 ### 4. Authentication & Middleware
-*   **Middleware**: `middleware.ts` ทำหน้าที่ Refresh Session ของ Supabase ทุกครั้งที่มีการ Request
+*   **Middleware**: `proxy.ts` ทำหน้าที่ Refresh Session ของ Supabase ทุกครั้งที่มีการ Request
 *   **Auth**: ใช้ Supabase Auth (Google OAuth และ Email)
 
 ---
@@ -75,4 +75,14 @@
 1.  **Extraction**: แยก Logic UI สลิปไปที่ `SlipRow.tsx`
 2.  **Modals**: แยก `SplitSettingsModal` และ `BulkSaveModal` ออกมา
 3.  **Typing**: ย้าย Type ทั้งหมดไปที่ `types/index.ts` เพื่อความเป็นระเบียบ
-4.  **Middleware**: ใช้ชื่อ `middleware.ts` ตามมาตรฐาน Next.js
+4.  **Middleware**: ใช้ชื่อ `proxy.ts` ตามมาตรฐาน Next.js 16 (Turbopack)
+
+---
+
+## 🚀 Deployment & Production Readiness (การเตรียมพร้อมก่อน Deploy)
+โปรเจกต์นี้ได้รับการตรวจสอบความพร้อมสำหรับการ Deploy (เช่น บน Vercel) ดังนี้:
+1.  **Middleware/Proxy Setup**: ใช้ `proxy.ts` แทน `middleware.ts` ตามข้อกำหนดของ Next.js 16.2.4 ในโปรเจกต์นี้ เพื่อรองรับการจัดการ Auth Session ในระดับ Server-side
+2.  **Linting & Type Safety**: แก้ไข `any` types และ unused variables ทั้งหมดเพื่อให้ผ่าน `npm run lint` ซึ่งสำคัญมากสำหรับ CI/CD
+3.  **Build Verification**: ตรวจสอบแล้วว่า `npm run build` ผ่านสมบูรณ์ ไม่มีการ Error ในขั้นตอน Compilation
+4.  **Environment Variables**: ต้องตั้งค่า `NEXT_PUBLIC_SUPABASE_URL` และ `NEXT_PUBLIC_SUPABASE_ANON_KEY` ใน Production environment
+5.  **Tesseract.js**: ใช้ `tha+eng` trained data ที่ถูกเก็บไว้ใน `/lang-data` เพื่อความรวดเร็วและไม่พึ่งพา External CDN ระหว่างรัน

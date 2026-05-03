@@ -25,7 +25,7 @@ export function SlipRow({
   const { user } = useAuth();
   const { updateSlip, toggleSelect, analyzeSingleSlip, saveSingleSlip, setSlips } = useSlips();
 
-  const onUpdate = (updates: any) => updateSlip(slip.id, updates);
+  const onUpdate = (updates: Parameters<typeof updateSlip>[1]) => updateSlip(slip.id, updates);
   const onToggleSelect = () => toggleSelect(slip.id);
   const onAnalyze = () => analyzeSingleSlip(slip.id);
   const handleRowSave = () => saveSingleSlip(slip.id);

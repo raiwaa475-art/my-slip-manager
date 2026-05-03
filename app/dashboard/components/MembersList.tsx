@@ -61,8 +61,8 @@ export function MembersList({
         ))}
         
         {/* Guest Members */}
-        {guestMembers.map((name, i) => (
-          <div key={`guest-${i}`} className="flex items-center justify-between group">
+        {guestMembers.map((name: string, i: number) => (
+          <div key={`guest-${name}-${i}`} className="flex items-center justify-between group animate-in fade-in slide-in-from-right-2 duration-300">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-black border bg-amber-500/10 border-amber-500/20 text-amber-600">
                 {name[0].toUpperCase()}

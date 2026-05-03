@@ -70,7 +70,7 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
       
       Object.entries(updates).forEach(([key, value]) => {
         if (key !== 'result') {
-          (newSlip as any)[key] = value;
+          (newSlip as unknown as Record<string, unknown>)[key] = value;
         }
       });
       
@@ -305,8 +305,9 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
           qr_raw: qrData
         } 
       });
-    } catch (err: any) {
-      updateSlip(id, { status: "error", error: err.message });
+    } catch (err) {
+      const error = err as Error;
+      updateSlip(id, { status: "error", error: error.message });
     }
   };
 
@@ -351,8 +352,9 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
       setTimeout(() => {
         setSlips(prev => prev.filter(s => s.id !== id));
       }, 2000);
-    } catch (err: any) {
-      updateSlip(id, { status: "error", error: "บันทึกล้มเหลว: " + err.message });
+    } catch (err) {
+      const error = err as Error;
+      updateSlip(id, { status: "error", error: "บันทึกล้มเหลว: " + error.message });
     }
   };
 
@@ -388,8 +390,9 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
         const { error } = await supabase.from('transactions').insert(insertData);
         if (error) throw error;
         updateSlip(slip.id, { status: "saved" });
-      } catch (err: any) {
-        updateSlip(slip.id, { status: "error", error: "บันทึกล้มเหลว: " + err.message });
+      } catch (err) {
+        const error = err as Error;
+        updateSlip(slip.id, { status: "error", error: "บันทึกล้มเหลว: " + error.message });
       }
     }
     

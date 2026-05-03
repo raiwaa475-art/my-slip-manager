@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAuth } from "../../contexts/AuthContext";
 import { useState } from "react";
 import { Dashboard, User } from "../../../types";
 import { ThemeToggle } from "../../components/ui/ThemeToggle";
@@ -27,7 +28,7 @@ export function BottomNav({
 }: BottomNavProps) {
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const supabase = createClient();
+  const { signOut } = useAuth();
 
   const navItems = [
     { 
@@ -128,7 +129,7 @@ export function BottomNav({
                    </div>
                 </div>
                 <button 
-                  onClick={() => supabase.auth.signOut()}
+                  onClick={signOut}
                   className="flex items-center gap-3 p-3 rounded-xl text-red-500 hover:bg-red-500/10 transition-all w-full"
                 >
                   <LogOut className="w-5 h-5" />
