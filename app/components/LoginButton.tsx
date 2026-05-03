@@ -1,7 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { LogIn } from "lucide-react";
+import Image from "next/image";
 
 export default function LoginButton() {
   const supabase = createClient();
@@ -20,7 +20,14 @@ export default function LoginButton() {
       onClick={handleLogin}
       className="flex items-center gap-2 bg-white text-black hover:bg-gray-100 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg border border-gray-200"
     >
-      <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
+      <div className="relative w-5 h-5">
+        <Image 
+          src="https://www.google.com/favicon.ico" 
+          alt="Google" 
+          fill
+          unoptimized
+        />
+      </div>
       เข้าสู่ระบบด้วย Google
     </button>
   );
