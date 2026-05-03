@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     checkUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         await fetchDashboards(session.user.id);
@@ -86,7 +86,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    // Real-time subscription for dashboard changes
+    const dashChannel = supabase
+      .channel('dashboards-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'dashboards'
+        },
+        (payload) => {
+          console.log('📦 [AuthContext] Dashboard updated via real-time:', payload);
+          setDashboards(prev => prev.map(d => 
+            d.id === payload.new.id ? { ...d, ...payload.new } : d
+          ));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      authSub.unsubscribe();
+      supabase.removeChannel(dashChannel);
+    };
   }, [supabase, fetchDashboards]);
 
   const handleSetSelectedDashboardId = (id: string) => {

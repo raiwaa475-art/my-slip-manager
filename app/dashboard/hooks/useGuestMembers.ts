@@ -44,8 +44,30 @@ export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDash
       setBankAccountNumber(activeDashboard.metadata?.bank_account_number || "");
       setBankName(activeDashboard.metadata?.bank_name || "");
       fetchMembers(activeDashboard.id);
+
+      // Real-time for members list
+      const memberChannel = supabase
+        .channel(`members-${activeDashboard.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'dashboard_users',
+            filter: `dashboard_id=eq.${activeDashboard.id}`
+          },
+          () => {
+            console.log('👥 [useGuestMembers] Members changed, refetching...');
+            fetchMembers(activeDashboard.id);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(memberChannel);
+      };
     }
-  }, [activeDashboard, fetchMembers]);
+  }, [activeDashboard, fetchMembers, supabase]);
 
   const handleAddGuest = async () => {
     if (!newGuestName.trim() || !activeDashboard) return;

@@ -60,8 +60,30 @@ export default function Home() {
   useEffect(() => {
     if (selectedDashboardId) {
       fetchMembers(selectedDashboardId);
+
+      // Real-time for members list during scanning
+      const memberChannel = supabase
+        .channel(`scan-members-${selectedDashboardId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'dashboard_users',
+            filter: `dashboard_id=eq.${selectedDashboardId}`
+          },
+          () => {
+            console.log('👥 [Home] Members changed, refetching...');
+            fetchMembers(selectedDashboardId);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(memberChannel);
+      };
     }
-  }, [selectedDashboardId, fetchMembers]);
+  }, [selectedDashboardId, fetchMembers, supabase]);
 
   // Stats
   const stats = useMemo(() => {
