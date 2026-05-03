@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Dashboard } from "@/types";
+import { Dashboard } from "../../../types";
 import { useToast } from "@/app/components/ui/Toast";
 
 export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDashboard: (dash: Dashboard | null) => void) {
@@ -10,6 +10,9 @@ export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDash
   const [guestMembers, setGuestMembers] = useState<string[]>([]);
   const [newGuestName, setNewGuestName] = useState("");
   const [promptPayId, setPromptPayId] = useState("");
+  const [paymentType, setPaymentType] = useState<'promptpay' | 'bank'>('promptpay');
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankName, setBankName] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [members, setMembers] = useState<{ user_id: string }[]>([]);
   
@@ -42,6 +45,10 @@ export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDash
       } else {
         setPromptPayId("");
       }
+
+      setPaymentType(activeDashboard.metadata?.payment_type || 'promptpay');
+      setBankAccountNumber(activeDashboard.metadata?.bank_account_number || "");
+      setBankName(activeDashboard.metadata?.bank_name || "");
 
       fetchMembers(activeDashboard.id);
     }
@@ -103,23 +110,31 @@ export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDash
     }
   };
 
-  const savePromptPay = async () => {
+  const savePaymentSettings = async () => {
     if (!activeDashboard) return;
     const currentMetadata = activeDashboard.metadata || {};
+    const updatedMetadata = { 
+      ...currentMetadata, 
+      promptpay_id: promptPayId,
+      payment_type: paymentType,
+      bank_account_number: bankAccountNumber,
+      bank_name: bankName
+    };
+
     try {
       await supabase
         .from('dashboards')
-        .update({ metadata: { ...currentMetadata, promptpay_id: promptPayId } })
+        .update({ metadata: updatedMetadata })
         .eq('id', activeDashboard.id);
         
       setActiveDashboard({
         ...activeDashboard,
-        metadata: { ...currentMetadata, promptpay_id: promptPayId }
+        metadata: updatedMetadata
       });
       setIsSettingsOpen(false);
-      toast("บันทึกข้อมูลพร้อมเพย์สำเร็จ", "success");
+      toast("บันทึกข้อมูลการรับเงินสำเร็จ", "success");
     } catch (err) {
-      console.error("Error saving promptpay:", err);
+      console.error("Error saving payment settings:", err);
       toast("บันทึกไม่สำเร็จ", "error");
     }
   };
@@ -130,11 +145,17 @@ export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDash
     setNewGuestName,
     promptPayId,
     setPromptPayId,
+    paymentType,
+    setPaymentType,
+    bankAccountNumber,
+    setBankAccountNumber,
+    bankName,
+    setBankName,
     isSettingsOpen,
     setIsSettingsOpen,
     members,
     handleAddGuest,
     handleRemoveGuest,
-    savePromptPay
+    savePaymentSettings
   };
 }

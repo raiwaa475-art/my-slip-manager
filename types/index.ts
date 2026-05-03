@@ -15,6 +15,9 @@ export interface Dashboard {
   metadata?: {
     guest_members?: string[];
     promptpay_id?: string;
+    payment_type?: 'promptpay' | 'bank';
+    bank_account_number?: string;
+    bank_name?: string;
   };
 }
 
@@ -41,4 +44,26 @@ export interface DebtItem {
 export interface DebtSummary {
   owes: DebtItem[];
   owed: DebtItem[];
+}
+
+export interface AnalysisResult {
+  date: string;
+  amount: number;
+  receiver: string;
+  category: string;
+  confidence: number;
+  bank?: string;
+  qr_raw?: string;
+  isSplit?: boolean;
+  splitBetween?: string[];
+}
+
+export interface SlipItem {
+  id: string;
+  file: File;
+  preview: string;
+  status: "pending" | "analyzing" | "done" | "error" | "saving" | "saved";
+  result: AnalysisResult;
+  error?: string;
+  selected: boolean;
 }

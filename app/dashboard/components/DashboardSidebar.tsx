@@ -6,7 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "../../components/ui/ThemeToggle";
-import { User, Dashboard } from "@/types";
+import { User, Dashboard } from "../../../types";
 import { cn } from "@/lib/utils";
 
 interface DashboardSidebarProps {
@@ -34,8 +34,8 @@ export function DashboardSidebar({
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 border-r border-border flex-col p-6 gap-8 bg-card sticky top-0 h-screen">
         <div className="flex items-center gap-3">
-           <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center text-white">
-              <Wallet className="w-6 h-6" />
+           <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center relative">
+              <Image src="/logo.png" alt="Logo" fill className="object-cover" />
            </div>
            <span className="font-black text-xl tracking-tighter text-foreground">FINANCE.AI</span>
         </div>
@@ -131,8 +131,8 @@ export function DashboardSidebar({
       {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-card/80 backdrop-blur-xl border-b border-border z-50 flex items-center justify-between px-6">
         <div className="flex items-center gap-3 overflow-hidden">
-           <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center text-white shrink-0 shadow-lg shadow-accent/20">
-              <Wallet className="w-5 h-5" />
+           <div className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center relative shrink-0 shadow-lg shadow-accent/20">
+              <Image src="/logo.png" alt="Logo" fill className="object-cover" />
            </div>
            <div className="flex flex-col overflow-hidden">
               <span className="font-black text-[10px] tracking-tighter opacity-50 uppercase leading-none mb-1">FINANCE.AI</span>

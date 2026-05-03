@@ -6,7 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { Dashboard, User } from "@/types";
+import { Dashboard, User } from "../../../types";
 import { ThemeToggle } from "../../components/ui/ThemeToggle";
 import { createClient } from "@/lib/supabase/client";
 
@@ -34,7 +34,12 @@ export function BottomNav({
       label: "ภาพรวม", 
       icon: LayoutDashboard, 
       href: "/dashboard",
-      active: pathname === "/dashboard" && !isMenuOpen 
+      active: pathname === "/dashboard" && !isMenuOpen,
+      onClick: () => {
+        if (pathname === "/dashboard") {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
     },
     { 
       label: "รายการ", 
@@ -53,7 +58,7 @@ export function BottomNav({
       isAction: true 
     },
     { 
-      label: "จัดการ", 
+      label: "สลับบอร์ด", 
       icon: Plus, 
       href: "#",
       active: false,

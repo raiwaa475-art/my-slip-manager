@@ -21,18 +21,19 @@ import { DashboardHeader, PersonalStats, SplitStats } from "./components/Dashboa
 import { CalendarView, CategoryPieChart, GroupContributionChart, MonthlyTrendChart } from "./components/DashboardCharts";
 import { TransactionList, DebtSummary } from "./components/TransactionList";
 import { SettingsModal, SplitBillAlert, LoginRequiredView, SetupDashboardView } from "./components/DashboardModals";
-import { User, DebtItem } from "@/types";
+import { User, DebtItem } from "../../types";
 import { CATEGORIES } from "@/lib/constants";
 
 const scrollbarStyles = `.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-track { background: transparent; } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(155, 155, 155, 0.1); border-radius: 10px; } .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(155, 155, 155, 0.2); }`;
 
+import { useAuth } from "../contexts/AuthContext";
+
 export default function Dashboard() {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading: authLoading, dashboards, selectedDashboardId, setSelectedDashboardId } = useAuth();
   const [activeMonth] = useState(new Date());
   const [isMounted, setIsMounted] = useState(false);
   const [selectedDebt, setSelectedDebt] = useState<DebtItem | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const supabase = useMemo(() => createClient(), []);
 
   const dash = useDashboard(user);
   const tx = useTransactions(user, dash.activeDashboard?.id || null);
@@ -41,12 +42,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     setIsMounted(true);
-    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => setUser(session?.user ?? null));
-    return () => subscription.unsubscribe();
-  }, [supabase.auth]);
+  }, []);
 
-  if (dash.loading) return <div className="flex min-h-screen bg-background items-center justify-center"><Loader2 className="w-12 h-12 text-accent animate-spin" /></div>;
+  if (dash.loading || authLoading) return <div className="flex min-h-screen bg-background items-center justify-center"><Loader2 className="w-12 h-12 text-accent animate-spin" /></div>;
   if (!user) return <LoginRequiredView />;
   if (dash.setupMode) return <SetupDashboardView dash={dash} />;
 
@@ -99,8 +97,30 @@ export default function Dashboard() {
       </main>
 
       <TransactionModal isOpen={tx.isModalOpen} onClose={() => tx.setIsModalOpen(false)} {...tx} members={guests.members} guestMembers={guests.guestMembers} user={user} categories={CATEGORIES} />
-      <PaymentQRModal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} selectedDebt={selectedDebt} promptPayId={guests.promptPayId} getTransactionBreakdown={debt.getTransactionBreakdown} setIsSettingsOpen={guests.setIsSettingsOpen} />
-      <SettingsModal isOpen={guests.isSettingsOpen} onClose={() => guests.setIsSettingsOpen(false)} promptPayId={guests.promptPayId} setPromptPayId={guests.setPromptPayId} onSave={guests.savePromptPay} />
+      <PaymentQRModal 
+        isOpen={isPaymentModalOpen} 
+        onClose={() => setIsPaymentModalOpen(false)} 
+        selectedDebt={selectedDebt} 
+        promptPayId={guests.promptPayId} 
+        paymentType={guests.paymentType}
+        bankAccountNumber={guests.bankAccountNumber}
+        bankName={guests.bankName}
+        getTransactionBreakdown={debt.getTransactionBreakdown} 
+        setIsSettingsOpen={guests.setIsSettingsOpen} 
+      />
+      <SettingsModal 
+        isOpen={guests.isSettingsOpen} 
+        onClose={() => guests.setIsSettingsOpen(false)} 
+        promptPayId={guests.promptPayId} 
+        setPromptPayId={guests.setPromptPayId} 
+        paymentType={guests.paymentType}
+        setPaymentType={guests.setPaymentType}
+        bankAccountNumber={guests.bankAccountNumber}
+        setBankAccountNumber={guests.setBankAccountNumber}
+        bankName={guests.bankName}
+        setBankName={guests.setBankName}
+        onSave={guests.savePaymentSettings} 
+      />
       <BottomNav user={user} dashboards={dash.dashboards} activeDashboard={dash.activeDashboard} setActiveDashboard={dash.setActiveDashboard} setSetupMode={dash.setSetupMode} />
     </div>
   );

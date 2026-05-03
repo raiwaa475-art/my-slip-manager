@@ -3,6 +3,8 @@
 import { ThemeProvider } from "next-themes";
 import { ToastProvider } from "./components/ui/Toast";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog";
+import { AuthProvider } from "./contexts/AuthContext";
+import { SlipProvider } from "./contexts/SlipContext";
 
 if (typeof window !== "undefined") {
   const originalReleasePointerCapture = Element.prototype.releasePointerCapture;
@@ -20,7 +22,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <ConfirmProvider>
         <ToastProvider>
-          {children}
+          <AuthProvider>
+            <SlipProvider>
+              {children}
+            </SlipProvider>
+          </AuthProvider>
         </ToastProvider>
       </ConfirmProvider>
     </ThemeProvider>

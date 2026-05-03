@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { format, subMonths } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
-import { User, Transaction } from "@/types";
+import type { SlipItem, User, AnalysisResult, Transaction } from "../../../types";
 import { useToast } from "@/app/components/ui/Toast";
 import { useConfirm } from "@/app/components/ui/ConfirmDialog";
 
@@ -35,9 +35,8 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
         .from('transactions')
         .select('*')
         .eq('dashboard_id', dashboardId)
-        .gte('date', sixMonthsAgo) // Filter last 6 months for performance
         .order('date', { ascending: false })
-        .limit(200); // Limit to 200 records for UI stability
+        .limit(500); 
 
       if (error) throw error;
       setTransactions(data || []);
@@ -49,8 +48,41 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
   }, [supabase]);
 
   useEffect(() => {
+    let subscription: any = null;
+
+    const setupSubscription = (dashboardId: string | null) => {
+      const channel = supabase
+        .channel('schema-db-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'transactions',
+            filter: dashboardId ? `dashboard_id=eq.${dashboardId}` : `user_id=eq.${user?.id}`
+          },
+          (payload) => {
+            console.log('Real-time change received:', payload);
+            if (payload.eventType === 'INSERT') {
+              setTransactions(prev => {
+                if (prev.find(t => t.id === payload.new.id)) return prev;
+                return [payload.new as Transaction, ...prev];
+              });
+            } else if (payload.eventType === 'UPDATE') {
+              setTransactions(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
+            } else if (payload.eventType === 'DELETE') {
+              setTransactions(prev => prev.filter(t => t.id === payload.old.id));
+            }
+          }
+        )
+        .subscribe();
+      
+      return channel;
+    };
+
     if (activeDashboardId) {
       fetchTransactions(activeDashboardId);
+      subscription = setupSubscription(activeDashboardId);
     } else if (user) {
       const fetchUserTransactions = async () => {
         setLoading(true);
@@ -64,7 +96,14 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
         setLoading(false);
       };
       fetchUserTransactions();
+      subscription = setupSubscription(null);
     }
+
+    return () => {
+      if (subscription) {
+        supabase.removeChannel(subscription);
+      }
+    };
   }, [activeDashboardId, user, fetchTransactions, supabase]);
 
   const resetForm = (members: { user_id: string }[] = []) => {

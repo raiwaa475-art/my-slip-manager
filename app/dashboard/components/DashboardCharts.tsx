@@ -5,7 +5,7 @@ import {
   PieChart, Pie, Cell, AreaChart, Area 
 } from "recharts";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay } from "date-fns";
-import { Transaction } from "@/types";
+import { Transaction } from "../../../types";
 import { cn } from "@/lib/utils";
 
 export function CalendarView({ activeMonth, transactions }: { activeMonth: Date, transactions: Transaction[] }) {

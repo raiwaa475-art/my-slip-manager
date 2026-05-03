@@ -11,6 +11,12 @@ interface SettingsModalProps {
   onClose: () => void;
   promptPayId: string;
   setPromptPayId: (v: string) => void;
+  paymentType: 'promptpay' | 'bank';
+  setPaymentType: (v: 'promptpay' | 'bank') => void;
+  bankAccountNumber: string;
+  setBankAccountNumber: (v: string) => void;
+  bankName: string;
+  setBankName: (v: string) => void;
   onSave: () => void;
 }
 
@@ -19,6 +25,12 @@ export function SettingsModal({
   onClose,
   promptPayId,
   setPromptPayId,
+  paymentType,
+  setPaymentType,
+  bankAccountNumber,
+  setBankAccountNumber,
+  bankName,
+  setBankName,
   onSave
 }: SettingsModalProps) {
   if (!isOpen) return null;
@@ -41,19 +53,74 @@ export function SettingsModal({
           <p className="text-sm text-muted">กรอกข้อมูลเพื่อให้เพื่อนโอนคืนได้สะดวก</p>
         </div>
 
-        <div className="space-y-4 mb-8">
+        <div className="space-y-6 mb-8">
           <div className="space-y-2">
             <label className="text-[10px] font-black text-muted uppercase tracking-widest px-2">
-              เลขพร้อมเพย์ / เบอร์โทร
+              ช่องทางการรับเงิน
             </label>
-            <input
-              type="text"
-              value={promptPayId}
-              onChange={e => setPromptPayId(e.target.value)}
-              placeholder="08X-XXX-XXXX"
-              className="w-full bg-background border border-border rounded-xl px-4 py-3 outline-none text-center font-bold"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setPaymentType('promptpay')}
+                className={cn(
+                  "py-3 rounded-xl text-xs font-bold border transition-all",
+                  paymentType === 'promptpay' ? "bg-indigo-600 border-indigo-600 text-white" : "bg-background border-border text-muted"
+                )}
+              >
+                พร้อมเพย์
+              </button>
+              <button
+                onClick={() => setPaymentType('bank')}
+                className={cn(
+                  "py-3 rounded-xl text-xs font-bold border transition-all",
+                  paymentType === 'bank' ? "bg-indigo-600 border-indigo-600 text-white" : "bg-background border-border text-muted"
+                )}
+              >
+                บัญชีธนาคาร
+              </button>
+            </div>
           </div>
+
+          {paymentType === 'promptpay' ? (
+            <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest px-2">
+                เลขพร้อมเพย์ / เบอร์โทร
+              </label>
+              <input
+                type="text"
+                value={promptPayId}
+                onChange={e => setPromptPayId(e.target.value)}
+                placeholder="08X-XXX-XXXX"
+                className="w-full bg-background border border-border rounded-xl px-4 py-3 outline-none text-center font-bold"
+              />
+            </div>
+          ) : (
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest px-2">
+                  ธนาคาร
+                </label>
+                <input
+                  type="text"
+                  value={bankName}
+                  onChange={e => setBankName(e.target.value)}
+                  placeholder="เช่น กสิกรไทย, ไทยพาณิชย์"
+                  className="w-full bg-background border border-border rounded-xl px-4 py-3 outline-none text-center font-bold"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest px-2">
+                  เลขบัญชีธนาคาร
+                </label>
+                <input
+                  type="text"
+                  value={bankAccountNumber}
+                  onChange={e => setBankAccountNumber(e.target.value)}
+                  placeholder="XXX-X-XXXXX-X"
+                  className="w-full bg-background border border-border rounded-xl px-4 py-3 outline-none text-center font-bold"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <button
@@ -130,10 +197,18 @@ export function SetupDashboardView({ dash }: { dash: ReturnType<typeof useDashbo
 
         {dash.setupMode === "choose" && (
           <>
-            <div className="space-y-2">
+            <div className="space-y-2 relative w-full">
+              {dash.dashboards.length > 0 && (
+                <button 
+                  onClick={() => dash.setSetupMode(null)}
+                  className="absolute -top-12 -right-4 p-2 text-muted hover:text-foreground transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              )}
               <h2 className="text-2xl font-black uppercase">เริ่มต้นใช้งาน</h2>
               <p className="text-sm text-muted">
-                ดูเหมือนคุณยังไม่มีแดชบอร์ด คุณต้องการสร้างใหม่หรือเข้าร่วมแดชบอร์ดที่มีอยู่แล้ว?
+                {dash.dashboards.length > 0 ? "เลือกการดำเนินการที่คุณต้องการ" : "ดูเหมือนคุณยังไม่มีแดชบอร์ด คุณต้องการสร้างใหม่หรือเข้าร่วมแดชบอร์ดที่มีอยู่แล้ว?"}
               </p>
             </div>
             <div className="flex flex-col gap-3 w-full">

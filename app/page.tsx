@@ -2,10 +2,10 @@
 
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { 
-  Upload, FileText, CheckCircle2, AlertCircle, Loader2, 
-  Calendar, User, X, Play, Coins, 
-  Trash2, CheckSquare, Square, Save, FastForward,
-  LayoutDashboard, Scan, Wallet, PiggyBank, LogOut, Plus
+  Upload, FileText, CheckCircle2, Loader2, 
+  X, Coins, LayoutDashboard, Scan, Wallet, PiggyBank, 
+  LogOut, Plus, FastForward, Save, CheckSquare, Square, Trash2,
+  User as UserIcon
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -15,436 +15,103 @@ import LoginButton from "./components/LoginButton";
 import { CATEGORIES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useToast } from "./components/ui/Toast";
-import { User as UserType, Dashboard, Transaction } from "@/types";
+import type { User, Dashboard, Transaction, SlipItem, AnalysisResult } from "../types";
 import { createWorker, type Worker } from "tesseract.js";
 import jsQR from "jsqr";
 
-interface AnalysisResult {
-  date: string;
-  amount: number;
-  receiver: string;
-  category: string;
-  confidence: number;
-  bank?: string;
-  qr_raw?: string;
-}
+// Import Refactored Components
+import { SlipRow } from "./components/SlipRow";
+import { SplitSettingsModal } from "./components/SplitSettingsModal";
+import { BulkSaveModal } from "./components/BulkSaveModal";
 
-interface SlipItem {
-  id: string;
-  file: File;
-  preview: string;
-  status: "pending" | "analyzing" | "done" | "error" | "saving" | "saved";
-  result: AnalysisResult;
-  error?: string;
-  selected: boolean;
-}
+import { useAuth } from "./contexts/AuthContext";
+import { useSlips } from "./contexts/SlipContext";
 
 export default function Home() {
   const { toast } = useToast();
-  const [user, setUser] = useState<UserType | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [slips, setSlips] = useState<SlipItem[]>([]);
-  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
-  const [selectedDashboardId, setSelectedDashboardId] = useState<string>("");
-  const [isProcessingAll, setIsProcessingAll] = useState(false);
-  const [isSavingAll, setIsSavingAll] = useState(false);
+  const { user, loading, dashboards, selectedDashboardId, setSelectedDashboardId, signOut } = useAuth();
+  const { 
+    slips, setSlips, isProcessingAll, isSavingAll, worker,
+    addManualSlip, handleFileUpload, updateSlip, toggleSelect, 
+    selectAll, removeSelected, analyzeSingleSlip, processAll, 
+    saveSingleSlip, saveAll 
+  } = useSlips();
+
   const [showSaveToast, setShowSaveToast] = useState(false);
-  const [worker, setWorker] = useState<Worker | null>(null);
+  const [members, setMembers] = useState<{ user_id: string }[]>([]);
+  const [splitModalOpen, setSplitModalOpen] = useState<string | null>(null); // slip ID
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState("อื่นๆ");
+  const [bulkSplit, setBulkSplit] = useState(false);
+  const [bulkSplitBetween, setBulkSplitBetween] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => createClient(), []);
 
-  const fetchDashboards = useCallback(async (userId: string) => {
+  const fetchMembers = useCallback(async (dashboardId: string) => {
     try {
-      const { data: userDashboards, error: udError } = await supabase
+      const { data, error } = await supabase
         .from('dashboard_users')
-        .select('dashboard_id')
-        .eq('user_id', userId);
-
-      if (udError) throw udError;
-
-      if (userDashboards && userDashboards.length > 0) {
-        const dashboardIds = userDashboards.map(d => d.dashboard_id);
-        const { data: dashs, error: dError } = await supabase
-          .from('dashboards')
-          .select('*')
-          .in('id', dashboardIds);
-        
-        if (dError) throw dError;
-        setDashboards(dashs || []);
-        if (dashs && dashs.length > 0) {
-          setSelectedDashboardId(dashs[0].id);
-        }
-      }
+        .select('user_id')
+        .eq('dashboard_id', dashboardId);
+      if (error) throw error;
+      setMembers(data || []);
     } catch (err) {
-      console.error("Error fetching dashboards:", err);
+      console.error("Error fetching members:", err);
     }
   }, [supabase]);
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchDashboards(session.user.id);
-      }
-      setLoading(false);
-    };
-    checkUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchDashboards(session.user.id);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [supabase, fetchDashboards]);
-
-  // Initialize Tesseract Worker
-  useEffect(() => {
-    const initWorker = async () => {
-      try {
-        const w = await createWorker("tha+eng", 1, {
-          langPath: "/lang-data",
-          gzip: false,
-        });
-        setWorker(w);
-      } catch (err) {
-        console.error("Failed to initialize Tesseract worker:", err);
-      }
-    };
-    initWorker();
-    
-    return () => {
-      if (worker) {
-        worker.terminate();
-      }
-    };
-  }, []);
+    if (selectedDashboardId) {
+      fetchMembers(selectedDashboardId);
+    }
+  }, [selectedDashboardId, fetchMembers]);
 
   // Stats
   const stats = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
-    const counts: Record<string, { count: number, total: number }> = {};
-    let todayCount = 0;
     let todayTotal = 0;
 
     slips.forEach((slip) => {
       const date = slip.result.date;
       const amount = Number(slip.result.amount) || 0;
-      
-      if (!counts[date]) counts[date] = { count: 0, total: 0 };
-      counts[date].count += 1;
-      counts[date].total += amount;
-
       if (date === today) {
-        todayCount++;
         todayTotal += amount;
       }
     });
 
-    return { todayCount, todayTotal, counts, today };
+    return { todayTotal };
   }, [slips]);
 
-  const resizeImage = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new window.Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          const MAX_WIDTH = 2000;
-          const MAX_HEIGHT = 2000;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          ctx?.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/jpeg", 0.9)); // เพิ่มคุณภาพเป็น 90%
-        };
-      };
-    });
-  };
-
-  const handleAddManual = () => {
-    const newSlip: SlipItem = {
-      id: Math.random().toString(36).substr(2, 9),
-      file: new File([], "manual"), // Dummy file
-      preview: "", // No preview
-      status: "done", // Mark as done so it can be saved immediately
-      selected: false,
-      result: {
-        date: new Date().toISOString().split("T")[0],
-        amount: 0,
-        receiver: "รายการใหม่",
-        category: "อื่นๆ",
-        confidence: 1
-      }
-    };
-    setSlips((prev) => [newSlip, ...prev]);
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    const remainingSlots = 20 - slips.length;
-    const filesToProcess = files.slice(0, remainingSlots);
-
-    for (const file of filesToProcess) {
-      try {
-        const resizedBase64 = await resizeImage(file);
-        const newSlip: SlipItem = {
-          id: Math.random().toString(36).substr(2, 9),
-          file: file,
-          preview: resizedBase64,
-          status: "pending",
-          selected: false,
-          result: {
-            date: new Date().toISOString().split("T")[0],
-            amount: 0,
-            receiver: "รอกดสแกน...",
-            category: "อื่นๆ",
-            confidence: 0
-          }
-        };
-        setSlips((prev) => [...prev, newSlip]);
-      } catch (err) {
-        console.error("Error processing file:", file.name, err);
-      }
+  const handleProcessAll = async () => {
+    if (slips.some(s => s.status === "error")) {
+      toast("กรุณาลบรายการที่สแกนไม่สำเร็จออกก่อนสแกนใหม่", "info");
     }
-    
-    // Clear input so same file can be uploaded again
-    if (e.target) e.target.value = "";
-  };
-
-  const updateSlip = (id: string, updates: Omit<Partial<SlipItem>, 'result'> & { result?: Partial<AnalysisResult> }) => {
-    setSlips((prev) => prev.map((s) => {
-      if (s.id !== id) return s;
-      
-      const newSlip = { ...s };
-      if (updates.result) {
-        newSlip.result = { ...s.result, ...updates.result };
-      }
-      
-      // Update other properties
-      Object.entries(updates).forEach(([key, value]) => {
-        if (key !== 'result') {
-          (newSlip as unknown as Record<string, unknown>)[key] = value;
-        }
-      });
-      
-      return newSlip;
-    }));
-  };
-
-  const toggleSelect = (id: string) => {
-    updateSlip(id, { selected: !slips.find(s => s.id === id)?.selected });
-  };
-
-  const selectAll = () => {
-    const allSelected = slips.every(s => s.selected);
-    setSlips(prev => prev.map(s => ({ ...s, selected: !allSelected })));
-  };
-
-  const bulkUpdateCategory = (category: string) => {
-    setSlips(prev => prev.map(s => s.selected ? { ...s, result: { ...s.result, category } } : s));
-  };
-
-  const removeSelected = () => {
-    setSlips(prev => prev.filter(s => !s.selected));
-  };
-
-  const analyzeSingleSlip = async (id: string) => {
-    const slip = slips.find((s) => s.id === id);
-    if (!slip || slip.status === "analyzing") return;
-
-    if (!worker) {
-      toast("ระบบสแกนยังไม่พร้อม โปรดรอสักครู่...", "info");
-      return;
-    }
-
-    updateSlip(id, { status: "analyzing", error: undefined });
-
-    try {
-      // 1. OCR with Tesseract
-      const { data: { text } } = await worker.recognize(slip.preview);
-
-      // 2. Scan QR Code
-      let qrData = "Not found";
-      try {
-        const img = new window.Image();
-        img.src = slip.preview;
-        await new Promise(r => img.onload = r);
-        
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        ctx?.drawImage(img, 0, 0);
-        const imageData = ctx?.getImageData(0, 0, canvas.width, canvas.height);
-        
-        if (imageData) {
-          const code = jsQR(imageData.data, imageData.width, imageData.height);
-          if (code) qrData = code.data;
-        }
-      } catch (e) {
-        console.error("QR Scan error:", e);
-      }
-
-      // 3. Extract Data (Simplified version of the server logic)
-      const normalizedText = text.replace(/\s+/g, ' ');
-      
-      // Amount
-      let amount = 0;
-      const amountRegex = /(?:จำนวนเงิน|Amount|ยอดโอน|ยอดเงิน|Total|Sum|เงิน)\s*[:]?\s*([\d,]+\.\d{2})/i;
-      const amountMatch = normalizedText.match(amountRegex) || normalizedText.match(/([\d,]+\.\d{2})/);
-      if (amountMatch) {
-        amount = parseFloat((amountMatch[1] || amountMatch[0]).replace(/,/g, ""));
-      }
-
-      // Date
-      let date = new Date().toISOString().split("T")[0];
-      const dateMatch = normalizedText.match(/(\d{1,2})[\s\.\-\/]*([ก-ฮa-z]{3,10}|[\d]{1,2})[\s\.\-\/]*(\d{2,4})/i);
-      if (dateMatch) {
-        // Simplified date parsing for now
-        // In a real app, you'd want the full logic from the route.ts
-        // For brevity, we'll use today or try basic parse
-      }
-
-      // Receiver/Bank
-      let receiver = "รายการจากสลิป";
-      const banks = ["KBank", "SCB", "Krungthai", "KTB", "Bangkok Bank", "BBL", "TMB", "Thanachart", "ttb", "GSB", "Bay", "Krungsri"];
-      for (const bank of banks) {
-        if (text.toLowerCase().includes(bank.toLowerCase())) {
-          receiver = bank;
-          break;
-        }
-      }
-
-      updateSlip(id, { 
-        status: "done", 
-        result: {
-          date,
-          amount,
-          receiver,
-          category: "อื่นๆ",
-          confidence: 0.8,
-          qr_raw: qrData
-        } 
-      });
-    } catch (err: unknown) {
-      const error = err as Error;
-      updateSlip(id, { status: "error", error: error.message });
-    }
-  };
-
-  const processAll = async () => {
-    setIsProcessingAll(true);
-    const pendingSlips = slips.filter((s) => s.status !== "done" && s.status !== "saved");
-    for (const slip of pendingSlips) {
-      await analyzeSingleSlip(slip.id);
-    }
-    setIsProcessingAll(false);
+    await processAll();
     if (slips.some(s => s.status === 'done' || s.status === 'pending')) {
         setShowSaveToast(true);
     }
   };
 
-  const saveSingleSlip = async (id: string) => {
-    if (!user) return;
-    const slip = slips.find(s => s.id === id);
-    if (!slip || slip.status !== 'done') return;
-
-    updateSlip(id, { status: "saving" });
-    try {
-      const insertData: Partial<Transaction> = {
-        user_id: user.id,
-        name: slip.result.receiver || "ไม่ระบุ",
-        amount: -Math.abs(slip.result.amount),
-        date: slip.result.date,
-        category: slip.result.category,
-        receiver: slip.result.receiver
-      };
-
-      if (selectedDashboardId) {
-        insertData.dashboard_id = selectedDashboardId;
-      }
-
-      const { error } = await supabase.from('transactions').insert(insertData);
-      if (error) throw error;
-      
-      updateSlip(id, { status: "saved" });
-      setTimeout(() => {
-        setSlips(prev => prev.filter(s => s.id !== id));
-      }, 2000);
-    } catch (err: unknown) {
-      const error = err as Error;
-      updateSlip(id, { status: "error", error: "บันทึกล้มเหลว: " + error.message });
-    }
-  };
-
-  const saveToSupabase = async () => {
-    if (!user) return;
+  const handleSaveAll = async () => {
     if (dashboards.length > 0 && !selectedDashboardId) {
       toast("กรุณาเลือกแดชบอร์ดที่จะบันทึก", "info");
       return;
     }
-    
-    setIsSavingAll(true);
-    
-    const slipsToSave = slips.filter(s => s.status === 'done');
-    
-    for (const slip of slipsToSave) {
-      updateSlip(slip.id, { status: "saving" });
-      try {
-        const insertData: Partial<Transaction> = {
-          user_id: user.id,
-          name: slip.result.receiver || "ไม่ระบุ",
-          amount: -Math.abs(slip.result.amount), // Expenses are negative
-          date: slip.result.date,
-          category: slip.result.category,
-          receiver: slip.result.receiver
-        };
-
-        if (selectedDashboardId) {
-          insertData.dashboard_id = selectedDashboardId;
-        }
-
-        const { error } = await supabase.from('transactions').insert(insertData);
-
-        if (error) throw error;
-        updateSlip(slip.id, { status: "saved" });
-      } catch (err: unknown) {
-        const error = err as Error;
-        updateSlip(slip.id, { status: "error", error: "บันทึกล้มเหลว: " + error.message });
-      }
-    }
-    
-    setIsSavingAll(false);
-    // Remove saved slips after 2 seconds
-    setTimeout(() => {
-      setSlips(prev => prev.filter(s => s.status !== 'saved'));
-    }, 2000);
+    await saveAll(bulkModalOpen ? bulkCategory : undefined, bulkModalOpen ? bulkSplit : undefined, bulkModalOpen ? bulkSplitBetween : undefined);
+    setBulkModalOpen(false);
   };
 
   const selectedCount = slips.filter(s => s.selected).length;
+  const doneSlips = useMemo(() => slips.filter(s => s.status === 'done'), [slips]);
+  const totalAmount = useMemo(() => doneSlips.reduce((acc, s) => acc + s.result.amount, 0), [doneSlips]);
+  const uniqueDates = useMemo(() => {
+    const dates = doneSlips.map(s => s.result.date);
+    return Array.from(new Set(dates)).sort();
+  }, [doneSlips]);
+
+  const bulkUpdateCategory = (category: string) => {
+    setSlips(prev => prev.map(s => s.selected ? { ...s, result: { ...s.result, category } } : s));
+  };
 
   if (loading) {
     return (
@@ -479,11 +146,10 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors">
-      {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 border-r border-border flex-col p-6 gap-8 bg-card sticky top-0 h-screen">
         <div className="flex items-center gap-3">
-           <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center text-white">
-              <Wallet className="w-6 h-6" />
+           <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center relative">
+              <Image src="/logo.png" alt="Logo" fill className="object-cover" />
            </div>
            <span className="font-black text-xl tracking-tighter text-foreground">FINANCE.AI</span>
         </div>
@@ -503,22 +169,14 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center overflow-hidden border border-indigo-500/20 relative">
               {user.user_metadata?.avatar_url ? (
-                <Image 
-                  src={user.user_metadata.avatar_url} 
-                  alt="avatar" 
-                  fill 
-                  className="object-cover" 
-                />
+                <Image src={user.user_metadata.avatar_url} alt="avatar" fill className="object-cover" />
               ) : (
-                <User className="w-4 h-4 text-indigo-500" />
+                <UserIcon className="w-4 h-4 text-indigo-500" />
               )}
             </div>
             <div className="flex flex-col truncate">
               <span className="text-xs font-bold truncate">{user.user_metadata?.full_name || user.email}</span>
-              <button 
-                onClick={() => supabase.auth.signOut()}
-                className="text-[10px] text-muted hover:text-red-500 flex items-center gap-1 font-bold"
-              >
+              <button onClick={signOut} className="text-[10px] text-muted hover:text-red-500 flex items-center gap-1 font-bold">
                 <LogOut className="w-3 h-3" /> ออกจากระบบ
               </button>
             </div>
@@ -530,21 +188,24 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Mobile Header & Bottom Nav */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-card border-b border-border z-50 flex items-center justify-between px-4">
-        <div className="flex items-center gap-2">
-           <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white">
-              <Wallet className="w-5 h-5" />
+        <div className="flex items-center gap-3">
+           <Link href="/dashboard" className="p-2 -ml-2 text-muted hover:text-foreground">
+              <Plus className="w-6 h-6 rotate-45" />
+           </Link>
+           <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white">
+                 <Wallet className="w-5 h-5" />
+              </div>
+              <span className="font-black text-lg tracking-tighter">FINANCE</span>
            </div>
-           <span className="font-black text-lg tracking-tighter">FINANCE</span>
         </div>
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <button onClick={() => supabase.auth.signOut()} className="text-red-500"><LogOut className="w-5 h-5" /></button>
+          <button onClick={signOut} className="text-red-500"><LogOut className="w-5 h-5" /></button>
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-card border-t border-border z-50 flex items-center justify-around px-2 pb-4">
          <div className="flex flex-col items-center gap-1 p-2 text-accent">
             <Scan className="w-5 h-5" />
@@ -554,13 +215,12 @@ export default function Home() {
             <LayoutDashboard className="w-5 h-5" />
             <span className="text-[10px] font-medium">แดชบอร์ด</span>
          </Link>
-         <button className="flex flex-col items-center gap-1 p-2 text-muted hover:text-foreground">
+         <Link href="/dashboard#settings" className="flex flex-col items-center gap-1 p-2 text-muted hover:text-foreground">
             <PiggyBank className="w-5 h-5" />
-            <span className="text-[10px] font-medium">เป้าหมาย</span>
-         </button>
+            <span className="text-[10px] font-medium">ตั้งค่า</span>
+         </Link>
       </div>
 
-      {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto pt-16 pb-24 md:pt-0 md:pb-0">
         <header className="sticky top-0 md:top-auto z-30 bg-background/80 md:bg-transparent backdrop-blur-xl border-b border-border md:border-none px-4 md:px-8 lg:px-12 py-4 md:py-8 lg:py-10">
           <div className="max-w-[1400px] mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -593,32 +253,18 @@ export default function Home() {
                 </div>
             
             <div className="flex items-center gap-3 w-full md:w-auto">
-               <button 
-                  onClick={handleAddManual}
-                  className="flex-1 md:flex-none flex items-center justify-center gap-2 p-2.5 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-all text-foreground font-bold text-sm px-4"
-               >
+               <button onClick={addManualSlip} className="flex-1 md:flex-none flex items-center justify-center gap-2 p-2.5 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-all text-foreground font-bold text-sm px-4">
                   <Plus className="w-4 h-4" /> เพิ่มเอง
                </button>
-               <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex-1 md:flex-none flex justify-center p-2.5 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-all text-foreground"
-               >
+               <button onClick={() => fileInputRef.current?.click()} className="flex-1 md:flex-none flex justify-center p-2.5 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-all text-foreground">
                   <Upload className="w-5 h-5" />
                </button>
-               <button 
-                  onClick={processAll}
-                  disabled={isProcessingAll || slips.length === 0}
-                  className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20"
-               >
+               <button onClick={processAll} disabled={isProcessingAll || slips.length === 0} className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">
                   {isProcessingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <FastForward className="w-5 h-5" />}
                   สแกนทั้งหมด
                </button>
                {slips.some(s => s.status === 'done') && (
-                 <button 
-                    onClick={saveToSupabase}
-                    disabled={isSavingAll}
-                    className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20"
-                 >
+                 <button onClick={() => setBulkModalOpen(true)} disabled={isSavingAll} className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20">
                     {isSavingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                     บันทึกทั้งหมด
                  </button>
@@ -630,14 +276,10 @@ export default function Home() {
         <div className="max-w-[1400px] mx-auto p-4 md:p-8 lg:p-12 xl:p-16 space-y-6 md:space-y-10 pb-32">
           {slips.length > 0 && (
             <div className="flex items-center justify-between bg-card p-3 rounded-2xl border border-border">
-              <button 
-                onClick={selectAll}
-                className="flex items-center gap-2 text-sm font-medium hover:text-indigo-500 transition-colors px-3 text-foreground"
-              >
+              <button onClick={selectAll} className="flex items-center gap-2 text-sm font-medium hover:text-indigo-500 transition-colors px-3 text-foreground">
                 {slips.every(s => s.selected) ? <CheckSquare className="w-5 h-5 text-indigo-500" /> : <Square className="w-5 h-5 text-muted" />}
                 เลือกทั้งหมด
               </button>
-              
               {selectedCount > 0 && (
                 <div className="flex items-center gap-4">
                    <span className="text-sm font-bold text-indigo-500">เลือกแล้ว {selectedCount} ใบ</span>
@@ -648,10 +290,7 @@ export default function Home() {
           )}
 
           {slips.length === 0 ? (
-            <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="group mt-12 cursor-pointer glass rounded-[2rem] p-12 md:p-24 border-dashed border-2 border-border flex flex-col items-center gap-6 text-center hover:border-indigo-500/50 transition-all bg-card/50"
-            >
+            <div onClick={() => fileInputRef.current?.click()} className="group mt-12 cursor-pointer glass rounded-[2rem] p-12 md:p-24 border-dashed border-2 border-border flex flex-col items-center gap-6 text-center hover:border-indigo-500/50 transition-all bg-card/50">
                <div className="p-6 rounded-full bg-indigo-500/10 group-hover:scale-110 transition-transform">
                   <Upload className="w-12 h-12 text-indigo-500" />
                 </div>
@@ -667,11 +306,7 @@ export default function Home() {
                   key={slip.id} 
                   slip={slip} 
                   index={index}
-                  onUpdate={(updates) => updateSlip(slip.id, updates)}
-                  onToggleSelect={() => toggleSelect(slip.id)}
-                  onAnalyze={() => analyzeSingleSlip(slip.id)}
-                  handleRowSave={() => saveSingleSlip(slip.id)}
-                  onRemove={() => setSlips(prev => prev.filter(s => s.id !== slip.id))}
+                  onOpenSplit={() => setSplitModalOpen(slip.id)}
                 />
               ))}
             </div>
@@ -679,7 +314,6 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Floating Save Prompt / Toolbar */}
       {(slips.some(s => s.status === 'done') || showSaveToast) && (
         <div className="fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-12 duration-500 w-full max-w-lg px-4">
            <div className="glass rounded-[2rem] p-4 md:p-6 flex items-center justify-between gap-4 border border-emerald-500/40 shadow-2xl shadow-emerald-500/20 bg-card/95 backdrop-blur-2xl">
@@ -693,17 +327,8 @@ export default function Home() {
                  </div>
               </div>
               <div className="flex items-center gap-2">
-                 <button 
-                    onClick={() => setShowSaveToast(false)}
-                    className="p-3 text-muted hover:text-foreground transition-colors"
-                 >
-                    <X className="w-5 h-5" />
-                 </button>
-                 <button 
-                    onClick={() => { saveToSupabase(); setShowSaveToast(false); }}
-                    disabled={isSavingAll}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
-                 >
+                 <button onClick={() => setShowSaveToast(false)} className="p-3 text-muted hover:text-foreground transition-colors"><X className="w-5 h-5" /></button>
+                 <button onClick={() => setBulkModalOpen(true)} disabled={isSavingAll} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2">
                     {isSavingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     บันทึกตอนนี้
                  </button>
@@ -712,17 +337,12 @@ export default function Home() {
         </div>
       )}
 
-      {/* Floating Bulk Toolbar */}
       {selectedCount > 0 && (
         <div className="fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-12 duration-500">
            <div className="glass rounded-2xl p-3 md:p-4 flex flex-col items-center gap-3 border border-indigo-500/40 shadow-2xl shadow-indigo-500/20 bg-card/90 backdrop-blur-xl">
               <div className="flex gap-2 overflow-x-auto max-w-[90vw] pb-1">
                 {CATEGORIES.map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => bulkUpdateCategory(cat.id)}
-                    className="p-2 md:p-3 rounded-xl bg-background hover:bg-indigo-500/10 border border-border hover:border-indigo-500/50 transition-all flex flex-col items-center gap-1 min-w-[56px] md:min-w-[64px]"
-                  >
+                  <button key={cat.id} onClick={() => bulkUpdateCategory(cat.id)} className="p-2 md:p-3 rounded-xl bg-background hover:bg-indigo-500/10 border border-border hover:border-indigo-500/50 transition-all flex flex-col items-center gap-1 min-w-[56px] md:min-w-[64px]">
                     <span className="text-lg md:text-xl">{cat.icon}</span>
                     <span className="text-[9px] md:text-[10px] font-bold text-foreground">{cat.label}</span>
                   </button>
@@ -733,177 +353,38 @@ export default function Home() {
       )}
 
       <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" multiple />
-    </div>
-  );
-}
+      
+      <SplitSettingsModal 
+        isOpen={!!splitModalOpen}
+        onClose={() => setSplitModalOpen(null)}
+        slip={slips.find(s => s.id === splitModalOpen) || null}
+        onUpdate={(updates) => splitModalOpen && updateSlip(splitModalOpen, updates)}
+        members={members}
+        guestMembers={dashboards.find(d => d.id === selectedDashboardId)?.metadata?.guest_members || []}
+        user={user}
+      />
 
-function SlipRow({ 
-  slip, 
-  index,
-  onUpdate, 
-  onToggleSelect, 
-  onAnalyze,
-  handleRowSave,
-  onRemove
-}: { 
-  slip: SlipItem, 
-  index: number,
-  onUpdate: (updates: Omit<Partial<SlipItem>, 'result'> & { result?: Partial<AnalysisResult> }) => void,
-  onToggleSelect: () => void,
-  onAnalyze: () => void,
-  handleRowSave: () => void,
-  onRemove: () => void
-}) {
-  return (
-    <div className={cn(
-      "group relative flex flex-col md:flex-row glass rounded-3xl overflow-hidden border transition-all duration-300 bg-card",
-      slip.selected ? "border-indigo-500/50 bg-indigo-500/5 shadow-lg shadow-indigo-500/10" : 
-      slip.status === 'saved' ? "border-emerald-500/50 bg-emerald-500/5" : "border-border hover:border-muted"
-    )}>
-      <div 
-        onClick={onToggleSelect}
-        className="absolute top-4 left-4 z-20 cursor-pointer"
-      >
-        {slip.selected ? <CheckSquare className="w-6 h-6 text-indigo-500" /> : <Square className="w-6 h-6 text-muted group-hover:text-foreground transition-colors" />}
-      </div>
-
-      <div className="relative w-full md:w-56 h-48 md:h-auto overflow-hidden bg-black/10 border-b md:border-b-0 md:border-r border-border">
-        <div className="w-full h-full cursor-zoom-in transition-transform duration-500 hover:scale-150 origin-center flex items-center justify-center">
-          {slip.preview ? (
-            <Image 
-              src={slip.preview} 
-              alt="Slip" 
-              fill
-              unoptimized
-              className="object-cover opacity-90 group-hover:opacity-100 transition-opacity" 
-            />
-          ) : (
-            <div className="flex flex-col items-center gap-2 text-muted">
-               <FileText className="w-10 h-10 opacity-20" />
-               <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">No Image</span>
-            </div>
-          )}
-        </div>
-        {slip.status === 'pending' && (
-           <div className="absolute inset-0 bg-black/20 dark:bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <button 
-                onClick={(e) => { e.stopPropagation(); onAnalyze(); }}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white p-3 rounded-full shadow-xl"
-              >
-                <Play className="w-6 h-6" />
-              </button>
-           </div>
-        )}
-        {slip.status === 'analyzing' && (
-           <div className="absolute inset-0 bg-indigo-500/20 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
-              <Loader2 className="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-spin" />
-              <span className="text-[10px] font-bold tracking-tighter text-indigo-600 dark:text-indigo-400">SCANNING...</span>
-           </div>
-        )}
-        {slip.status === 'saving' && (
-           <div className="absolute inset-0 bg-emerald-500/20 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
-              <Loader2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400 animate-spin" />
-              <span className="text-[10px] font-bold tracking-tighter text-emerald-600 dark:text-emerald-400">SAVING...</span>
-           </div>
-        )}
-        {slip.status === 'saved' && (
-           <div className="absolute inset-0 bg-emerald-500/40 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
-              <CheckCircle2 className="w-10 h-10 text-white animate-bounce" />
-              <span className="text-xs font-black tracking-tighter text-white">SAVED!</span>
-           </div>
-        )}
-      </div>
-
-      <div className="flex-1 p-5 md:p-8 flex flex-col gap-5 md:gap-6">
-         <div className="flex justify-between items-start">
-            <div className="space-y-1 flex-1">
-               <span className="text-[10px] font-black text-indigo-500/80 tracking-widest uppercase">ผู้รับเงิน / ข้อมูล (แก้ไขได้)</span>
-               <input 
-                  type="text"
-                  value={slip.result.receiver}
-                  onChange={(e) => onUpdate({ result: { receiver: e.target.value } })}
-                  className="w-full bg-transparent border-none p-0 text-sm font-medium text-foreground outline-none focus:ring-0 placeholder:text-muted"
-                  placeholder="ระบุผู้รับเงิน..."
-               />
-            </div>
-            <button onClick={onRemove} className="text-muted hover:text-red-500 transition-colors ml-4"><X className="w-5 h-5" /></button>
-         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-           <div className="space-y-2">
-              <label className="text-[10px] font-black text-muted tracking-widest uppercase">ยอดเงิน (BAHT)</label>
-              <div className="relative group/input">
-                 <input 
-                    type="number"
-                    value={slip.result.amount || ""}
-                    onChange={(e) => onUpdate({ result: { amount: parseFloat(e.target.value) || 0 } })}
-                    placeholder="0.00"
-                    className="w-full bg-background border border-border focus:border-indigo-500/50 rounded-xl px-4 py-3 text-xl md:text-2xl font-bold text-foreground outline-none transition-all"
-                    tabIndex={index * 2 + 1}
-                 />
-                 <div className="absolute right-4 top-1/2 -translate-y-1/2 text-muted font-bold">฿</div>
-              </div>
-           </div>
-
-           <div className="space-y-2">
-              <label className="text-[10px] font-black text-muted tracking-widest uppercase">วันที่ (DATE)</label>
-              <div className="relative">
-                 <input 
-                    type="date"
-                    value={slip.result.date}
-                    onChange={(e) => onUpdate({ result: { date: e.target.value } })}
-                    className="w-full bg-background border border-border focus:border-indigo-500/50 rounded-xl px-4 py-3 text-base md:text-lg font-medium text-foreground outline-none transition-all"
-                    tabIndex={index * 2 + 2}
-                 />
-                 <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
-              </div>
-           </div>
-        </div>
-
-        <div className="space-y-3">
-           <label className="text-[10px] font-black text-muted tracking-widest uppercase">หมวดหมู่ (QUICK CATEGORY)</label>
-           <div className="flex flex-wrap gap-2">
-              {CATEGORIES.map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => onUpdate({ result: { category: cat.id } })}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-medium border transition-all",
-                    slip.result.category === cat.id 
-                      ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" 
-                      : "bg-background border-border hover:border-muted text-muted hover:text-foreground"
-                  )}
-                >
-                  <span>{cat.icon}</span>
-                  <span>{cat.label}</span>
-                </button>
-              ))}
-           </div>
-        </div>
-        
-        {slip.error && (
-          <p className="text-xs text-red-500 font-bold flex items-center gap-1">
-            <AlertCircle className="w-4 h-4" /> {slip.error}
-          </p>
-        )}
-
-        {slip.status === 'done' && (
-           <div className="pt-4 border-t border-border flex justify-end">
-              <button 
-                onClick={handleRowSave}
-                className="flex items-center gap-2 bg-emerald-600/10 hover:bg-emerald-600 text-emerald-600 hover:text-white px-6 py-2 rounded-xl font-bold text-sm transition-all border border-emerald-600/20"
-              >
-                <Save className="w-4 h-4" /> บันทึกรายการนี้
-              </button>
-           </div>
-        )}
-      </div>
-
-      <div className={cn(
-        "absolute bottom-4 right-4 w-2 h-2 rounded-full",
-        slip.status === 'done' || slip.status === 'saved' ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" : 
-        slip.status === 'error' ? "bg-red-500" : "bg-border"
-      )} />
+      <BulkSaveModal 
+        isOpen={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        onSave={handleSaveAll}
+        doneSlips={doneSlips}
+        totalAmount={totalAmount}
+        uniqueDates={uniqueDates}
+        dashboards={dashboards}
+        selectedDashboardId={selectedDashboardId}
+        setSelectedDashboardId={setSelectedDashboardId}
+        bulkCategory={bulkCategory}
+        setBulkCategory={setBulkCategory}
+        bulkSplit={bulkSplit}
+        setBulkSplit={setBulkSplit}
+        bulkSplitBetween={bulkSplitBetween}
+        setBulkSplitBetween={setBulkSplitBetween}
+        members={members}
+        guestMembers={dashboards.find(d => d.id === selectedDashboardId)?.metadata?.guest_members || []}
+        user={user}
+        isSavingAll={isSavingAll}
+      />
     </div>
   );
 }

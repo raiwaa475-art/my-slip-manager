@@ -14,8 +14,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Slip Manager",
-  description: "Manage your finances with AI",
+  title: "FINANCE.AI | ระบบจัดการสลิปและรายรับรายจ่ายอัจฉริยะ",
+  description: "จัดการสลิปและบัญชีรายรับรายจ่ายของคุณด้วย AI สรุปยอดอัตโนมัติ หารบิลกับเพื่อนได้ง่ายๆ ในที่เดียว",
+  icons: {
+    icon: "/icon.png",
+  }
 };
 
 export default function RootLayout({

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { User, Transaction, DebtSummary, DebtItem } from "@/types";
+import { User, Transaction, DebtSummary, DebtItem } from "../../../types";
 
 export function useDebts(user: User | null, transactions: Transaction[], members: { user_id: string }[], guestMembers: string[], dashboardType: string | null) {
   const [debts, setDebts] = useState<DebtSummary>({ owes: [], owed: [] });

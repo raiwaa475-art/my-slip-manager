@@ -2,7 +2,7 @@
 
 import { X, Download } from "lucide-react";
 import Image from "next/image";
-import { DebtItem } from "@/types";
+import { DebtItem } from "../../../types";
 import { useToast } from "@/app/components/ui/Toast";
 
 interface PaymentQRModalProps {
@@ -10,6 +10,9 @@ interface PaymentQRModalProps {
   onClose: () => void;
   selectedDebt: DebtItem | null;
   promptPayId: string;
+  paymentType: 'promptpay' | 'bank';
+  bankAccountNumber: string;
+  bankName: string;
   getTransactionBreakdown: (id: string) => { name: string, amount: number, date: string }[];
   setIsSettingsOpen: (val: boolean) => void;
 }
@@ -19,6 +22,9 @@ export function PaymentQRModal({
   onClose,
   selectedDebt,
   promptPayId,
+  paymentType,
+  bankAccountNumber,
+  bankName,
   getTransactionBreakdown,
   setIsSettingsOpen
 }: PaymentQRModalProps) {
@@ -36,7 +42,7 @@ export function PaymentQRModal({
           </div>
 
           <div className="bg-white p-6 rounded-3xl flex flex-col items-center gap-4 shadow-inner mb-6">
-             {promptPayId ? (
+             {paymentType === 'promptpay' && promptPayId ? (
                <>
                  <div className="relative w-48 h-48">
                    <Image 
@@ -51,9 +57,19 @@ export function PaymentQRModal({
                    <p className="text-lg font-black text-zinc-800">฿{selectedDebt.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                  </div>
                </>
+             ) : paymentType === 'bank' && bankAccountNumber ? (
+               <div className="py-8 px-4 flex flex-col items-center gap-2">
+                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">โอนเข้าบัญชีธนาคาร</p>
+                 <p className="text-xl font-black text-zinc-800">{bankName}</p>
+                 <p className="text-2xl font-black text-indigo-600 tracking-wider">{bankAccountNumber}</p>
+                 <div className="mt-4 text-center">
+                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">ยอดที่ต้องโอน</p>
+                    <p className="text-lg font-black text-zinc-800">฿{selectedDebt.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                 </div>
+               </div>
              ) : (
                <div className="py-12 px-6 text-center text-zinc-400 italic text-sm">
-                  <p>ยังไม่ได้ตั้งค่าเลข PromptPay</p>
+                  <p>ยังไม่ได้ตั้งค่าข้อมูลการรับเงิน</p>
                   <button onClick={() => { onClose(); setIsSettingsOpen(true); }} className="mt-4 text-indigo-500 font-bold underline">ตั้งค่าตอนนี้</button>
                </div>
              )}
@@ -74,12 +90,14 @@ export function PaymentQRModal({
 
           <button 
             onClick={() => {
-              navigator.clipboard.writeText(promptPayId);
-              toast("คัดลอกเลข PromptPay แล้ว", "success");
+              const toCopy = paymentType === 'promptpay' ? promptPayId : bankAccountNumber;
+              if (!toCopy) return;
+              navigator.clipboard.writeText(toCopy);
+              toast(paymentType === 'promptpay' ? "คัดลอกเลข PromptPay แล้ว" : "คัดลอกเลขบัญชีแล้ว", "success");
             }}
             className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-500 transition-all active:scale-95 flex items-center justify-center gap-2"
           >
-            <Download className="w-5 h-5" /> คัดลอกเลขพร้อมเพย์
+            <Download className="w-5 h-5" /> {paymentType === 'promptpay' ? "คัดลอกเลขพร้อมเพย์" : "คัดลอกเลขบัญชี"}
           </button>
        </div>
     </div>

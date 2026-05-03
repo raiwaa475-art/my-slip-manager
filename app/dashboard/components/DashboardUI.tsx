@@ -3,7 +3,7 @@
 import { Wallet, TrendingUp, TrendingDown, Receipt, Users, Plus, PiggyBank } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatCard } from "./StatCard";
-import { User } from "@/types";
+import { User } from "../../../types";
 
 export function DashboardHeader({ dash, tx, user, guests }: { 
   dash: { 

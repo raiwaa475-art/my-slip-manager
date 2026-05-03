@@ -2,7 +2,7 @@
 
 import { X, Plus, Save, Loader2, Users, Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { User, Transaction } from "@/types";
+import { User, Transaction } from "../../../types";
 
 interface TransactionModalProps {
   isOpen: boolean;

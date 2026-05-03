@@ -2,7 +2,7 @@
 
 import { Users, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { User, Dashboard } from "@/types";
+import { User, Dashboard } from "../../../types";
 import { useToast } from "@/app/components/ui/Toast";
 
 interface MembersListProps {

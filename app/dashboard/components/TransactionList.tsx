@@ -2,8 +2,8 @@
 
 import { Receipt, Pencil, Trash2, Users } from "lucide-react";
 import { format } from "date-fns";
-import { Transaction, DebtItem } from "@/types";
-import type { DebtSummary as DebtSummaryType } from "@/types";
+import { Transaction, DebtItem } from "../../../types";
+import type { DebtSummary as DebtSummaryType } from "../../../types";
 import { cn } from "@/lib/utils";
 
 export function TransactionList({ transactions, onEdit, onDelete }: { transactions: Transaction[], onEdit: (tx: Transaction) => void, onDelete: (id: string) => void }) {

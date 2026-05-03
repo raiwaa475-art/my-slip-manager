@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { User, Dashboard } from "@/types";
+import { User, Dashboard } from "../../../types";
 import { useToast } from "@/app/components/ui/Toast";
 import { useConfirm } from "@/app/components/ui/ConfirmDialog";
 
