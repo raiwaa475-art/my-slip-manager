@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createWorker, type Worker } from "tesseract.js";
 import jsQR from "jsqr";
 import { createClient } from "@/lib/supabase/client";
@@ -35,29 +35,40 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
   const [worker, setWorker] = useState<Worker | null>(null);
+  const workerPromiseRef = useRef<Promise<Worker | null> | null>(null);
   const supabase = useMemo(() => createClient(), []);
 
-  // Initialize Tesseract Worker
-  useEffect(() => {
-    const initWorker = async () => {
+  // Lazy initialize Tesseract Worker
+  const initWorker = useCallback(async () => {
+    if (worker) return worker;
+    if (workerPromiseRef.current) return workerPromiseRef.current;
+
+    workerPromiseRef.current = (async () => {
       try {
         const w = await createWorker("tha+eng", 1, {
           langPath: "/lang-data",
           gzip: false,
         });
         setWorker(w);
+        return w;
       } catch (err) {
         console.error("Failed to initialize Tesseract worker:", err);
+        toast("ไม่สามารถเริ่มระบบสแกนได้ โปรดลองใหม่อีกครั้ง", "error");
+        workerPromiseRef.current = null; // Reset on failure
+        return null;
       }
-    };
-    initWorker();
-    
+    })();
+
+    return workerPromiseRef.current;
+  }, [worker, toast]);
+
+  useEffect(() => {
     return () => {
       if (worker) {
         worker.terminate();
       }
     };
-  }, []);
+  }, [worker]);
 
   const updateSlip = useCallback((id: string, updates: Omit<Partial<SlipItem>, 'result'> & { result?: Partial<AnalysisResult> }) => {
     setSlips((prev) => prev.map((s) => {
@@ -180,15 +191,21 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
     const slip = slips.find((s) => s.id === id);
     if (!slip || slip.status === "analyzing") return;
 
-    if (!worker) {
-      toast("ระบบสแกนยังไม่พร้อม โปรดรอสักครู่...", "info");
+    let currentWorker = worker;
+    if (!currentWorker) {
+      updateSlip(id, { status: "analyzing" }); // Show loading even during init
+      currentWorker = await initWorker();
+    }
+
+    if (!currentWorker) {
+      updateSlip(id, { status: "error", error: "ระบบสแกนไม่พร้อม" });
       return;
     }
 
     updateSlip(id, { status: "analyzing", error: undefined });
 
     try {
-      const { data: { text } } = await worker.recognize(slip.preview);
+      const { data: { text } } = await currentWorker.recognize(slip.preview);
 
       let qrData = "Not found";
       try {
