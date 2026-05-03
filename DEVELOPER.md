@@ -15,7 +15,7 @@
 | `lib/` | Shared Utilities และ Configuration |
 | `lib/supabase/` | Supabase Client setup (Client & Server side) |
 | `types/index.ts` | TypeScript Interfaces (หัวใจหลักของข้อมูลในระบบ) |
-| `proxy.ts` | จัดการ Session และ Auth State (Supabase SSR) |
+| `middleware.ts` | จัดการ Session และ Auth State (Supabase SSR) |
 
 ---
 
@@ -40,7 +40,7 @@
     *   `BulkSaveModal.tsx`: ตั้งค่าการหารแบบกลุ่มสำหรับหลายสลิปพร้อมกัน
 
 ### 4. Authentication & Middleware
-*   **Middleware**: `proxy.ts` ทำหน้าที่ Refresh Session ของ Supabase ทุกครั้งที่มีการ Request
+*   **Middleware**: `middleware.ts` ทำหน้าที่ Refresh Session ของ Supabase ทุกครั้งที่มีการ Request
 *   **Auth**: ใช้ Supabase Auth (Google OAuth และ Email)
 
 ---
@@ -75,4 +75,4 @@
 1.  **Extraction**: แยก Logic UI สลิปไปที่ `SlipRow.tsx`
 2.  **Modals**: แยก `SplitSettingsModal` และ `BulkSaveModal` ออกมา
 3.  **Typing**: ย้าย Type ทั้งหมดไปที่ `types/index.ts` เพื่อความเป็นระเบียบ
-4.  **Middleware**: ย้ายจาก `middleware.ts` มาเป็น `proxy.ts` ตามมาตรฐาน Next.js 16
+4.  **Middleware**: ใช้ชื่อ `middleware.ts` ตามมาตรฐาน Next.js
