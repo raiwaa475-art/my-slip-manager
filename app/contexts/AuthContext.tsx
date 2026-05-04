@@ -22,42 +22,39 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ 
+  children, 
+  initialUser = null 
+}: { 
+  children: React.ReactNode, 
+  initialUser?: User | null 
+}) {
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(initialUser);
+  const [loading, setLoading] = useState(!initialUser);
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [selectedDashboardId, setSelectedDashboardId] = useState<string>("");
   const supabase = useMemo(() => createClient(), []);
 
   const fetchDashboards = useCallback(async (userId: string) => {
     try {
-      const { data: userDashboards, error: udError } = await supabase
-        .from('dashboard_users')
-        .select('dashboard_id')
-        .eq('user_id', userId);
-
-      if (udError) throw udError;
-
-      if (userDashboards && userDashboards.length > 0) {
-        const dashboardIds = userDashboards.map(d => d.dashboard_id);
-        const { data: dashs, error: dError } = await supabase
-          .from('dashboards')
-          .select('*')
-          .in('id', dashboardIds);
+      // ดึงข้อมูล Dashboards ทั้งหมดที่ User นี้เป็นสมาชิกอยู่ภายใน Query เดียว (Join)
+      const { data: dashs, error: dError } = await supabase
+        .from('dashboards')
+        .select('*, dashboard_users!inner(user_id)')
+        .eq('dashboard_users.user_id', userId);
         
-        if (dError) throw dError;
-        setDashboards(dashs || []);
-        
-        if (dashs && dashs.length > 0) {
-          const savedId = localStorage.getItem("activeDashboardId");
-          const stillExists = savedId ? dashs.find(d => d.id === savedId) : null;
-          const initialId = stillExists?.id || dashs[0].id;
-          setSelectedDashboardId(initialId);
-          localStorage.setItem("activeDashboardId", initialId);
-        }
+      if (dError) throw dError;
+      
+      setDashboards(dashs || []);
+      
+      if (dashs && dashs.length > 0) {
+        const savedId = localStorage.getItem("activeDashboardId");
+        const stillExists = savedId ? dashs.find(d => d.id === savedId) : null;
+        const initialId = stillExists?.id || dashs[0].id;
+        setSelectedDashboardId(initialId);
+        localStorage.setItem("activeDashboardId", initialId);
       } else {
-        setDashboards([]);
         setSelectedDashboardId("");
       }
     } catch (err) {
@@ -66,13 +63,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   useEffect(() => {
+    if (initialUser && dashboards.length === 0) {
+      fetchDashboards(initialUser.id);
+    }
+
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchDashboards(session.user.id);
+      // ถ้ามี initialUser แล้ว ไม่ต้องดึง session ซ้ำเพื่อความเร็ว (แต่ยังคงดึงเพื่อความถูกต้องของข้อมูลล่าสุด)
+      if (!initialUser) {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          await fetchDashboards(session.user.id);
+        }
+        setLoading(false);
       }
-      setLoading(false);
     };
     checkUser();
 

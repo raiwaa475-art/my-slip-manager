@@ -21,10 +21,11 @@
 
 ## 🔑 Key Logic Locations (จุดรวม Logic สำคัญ)
 
-### 1. การสแกน OCR และดึงข้อมูล
-*   **Location**: `app/page.tsx` -> ฟังก์ชัน `analyzeSingleSlip`
-*   **Engine**: `Tesseract.js` สำหรับถอดข้อความ (ภาษาไทย + อังกฤษ)
-*   **QR Scan**: `jsqr` สำหรับถอดข้อมูล Raw QR จากรูปภาพ เพื่อใช้ตรวจสอบความถูกต้องของสลิปในอนาคต
+### 1. การสแกน OCR และดึงข้อมูล (Optimized)
+*   **Location**: `app/api/analyze-slip/route.ts` (Server-side)
+*   **Engine**: `Tesseract.js` รันบน Node.js (Server) เพื่อลดภาระการโหลดไฟล์ 23MB+ ที่ฝั่ง Client
+*   **QR Scan**: `jsqr` รันบน Server เช่นกัน เพื่อดึง Raw Data จากสลิป
+*   **Client Side**: ส่งรูปภาพ Base64 ไปยัง API และรอรับผลลัพธ์ ทำให้หน้าเว็บโหลดเริ่มต้นได้เร็วขึ้นมาก (ลด Bundle Size)
 
 ### 2. การจัดการข้อมูลธุรกรรม (Transactions)
 *   **Location**: `app/dashboard/hooks/useTransactions.ts`

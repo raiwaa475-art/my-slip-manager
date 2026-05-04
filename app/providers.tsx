@@ -16,12 +16,18 @@ if (typeof window !== "undefined") {
   };
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ 
+  children,
+  initialUser = null
+}: { 
+  children: React.ReactNode,
+  initialUser?: any // ใช้ any ชั่วคราวเพื่อความสะดวกในการส่งผ่านจาก server
+}) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <ConfirmProvider>
         <ToastProvider>
-          <AuthProvider>
+          <AuthProvider initialUser={initialUser}>
             {children}
           </AuthProvider>
         </ToastProvider>

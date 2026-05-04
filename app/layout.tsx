@@ -21,11 +21,16 @@ export const metadata: Metadata = {
   }
 };
 
-export default function RootLayout({
+import { createClient } from "@/lib/supabase/server";
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   return (
     <html
       lang="th"
@@ -33,7 +38,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground transition-colors">
-        <Providers>{children}</Providers>
+        <Providers initialUser={user}>{children}</Providers>
       </body>
     </html>
   );
