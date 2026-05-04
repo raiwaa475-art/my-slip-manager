@@ -7,6 +7,7 @@ import { useAuth } from "./AuthContext";
 import type { SlipItem, AnalysisResult, Transaction } from "@/types";
 import { createWorker, type Worker } from "tesseract.js";
 import jsQR from "jsqr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
 interface SlipContextType {
@@ -402,7 +403,7 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
       const insertData: Partial<Transaction> = {
         user_id: user.id,
         name: slip.result.receiver || "ไม่ระบุ",
-        amount: -Math.abs(slip.result.amount),
+        amount: -Math.abs(Number(slip.result.amount)),
         date: slip.result.date,
         category: slip.result.category,
         receiver: slip.result.receiver
@@ -417,18 +418,42 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
         insertData.dashboard_id = selectedDashboardId;
       }
 
-      console.log(`[Save] Inserting data to Supabase:`, insertData);
-      const { error } = await authSupabase.from('transactions').insert(insertData);
-      if (error) throw error;
+      console.log(`[Save] 🚀 Using temp client to bypass locks...`);
+      const tempClient = createSupabaseClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { auth: { persistSession: false } }
+      );
       
-      console.log(`[Save] ✅ Save successful for: ${id}`);
+      const { data: { session } } = await authSupabase.auth.getSession();
+      if (session) {
+        await tempClient.auth.setSession(session);
+      }
+
+      console.log(`[Save] 🚀 Sending data to Supabase (Single):`, insertData);
+      
+      const insertPromise = tempClient.from('transactions').insert(insertData).select();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Supabase request timed out (15s)")), 15000)
+      );
+
+      console.time(`[Save] Request Duration - ${id}`);
+      const { data, error } = await Promise.race([insertPromise, timeoutPromise]) as any;
+      console.timeEnd(`[Save] Request Duration - ${id}`);
+      
+      if (error) {
+        console.error(`[Save] ❌ Supabase Error:`, error);
+        throw error;
+      }
+      
+      console.log(`[Save] ✅ Save successful:`, data);
       updateSlip(id, { status: "saved" });
       setTimeout(() => {
         setSlips(prev => prev.filter(s => s.id !== id));
       }, 2000);
     } catch (err) {
       const error = err as Error;
-      console.error(`[Save] ❌ Save failed for ${id}:`, error);
+      console.error(`[Save] ❌ Final Catch:`, error);
       updateSlip(id, { status: "error", error: "บันทึกล้มเหลว: " + error.message });
       toast("บันทึกล้มเหลว: " + error.message, "error");
     }
@@ -483,17 +508,35 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
           insertData.dashboard_id = selectedDashboardId;
         }
 
+        console.log(`[SaveAll] 🚀 Using temp client to bypass locks...`);
+        const tempClient = createSupabaseClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { auth: { persistSession: false } }
+        );
+        
+        const { data: { session } } = await authSupabase.auth.getSession();
+        if (session) {
+          await tempClient.auth.setSession(session);
+        }
+
         console.log(`[SaveAll] 🚀 Sending insert request to Supabase...`, insertData);
         
-        // Use authSupabase which has the correct session
-        const { error } = await authSupabase.from('transactions').insert(insertData);
+        const insertPromise = tempClient.from('transactions').insert(insertData).select();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Supabase request timed out (15s)")), 15000)
+        );
+
+        console.time(`[SaveAll] Request Duration - ${slip.id}`);
+        const { data, error } = await Promise.race([insertPromise, timeoutPromise]) as any;
+        console.timeEnd(`[SaveAll] Request Duration - ${slip.id}`);
         
         if (error) {
-          console.error(`[SaveAll] ❌ Supabase Error:`, error);
+          console.error(`[SaveAll] ❌ Supabase Error for ${slip.id}:`, error);
           throw error;
         }
         
-        console.log(`[SaveAll] ✅ Success for slip: ${slip.id}`);
+        console.log(`[SaveAll] ✅ Success for slip: ${slip.id}`, data);
         updateSlip(slip.id, { status: "saved" });
       } catch (err) {
         const error = err as Error;

@@ -22,8 +22,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-export const supabase = createClient();
-
 export function AuthProvider({ 
   children, 
   initialUser = null 
@@ -32,6 +30,7 @@ export function AuthProvider({
   initialUser?: User | null 
 }) {
   const { toast } = useToast();
+  const supabase = useMemo(() => createClient(), []);
   const [user, setUser] = useState<User | null>(initialUser);
   const [loading, setLoading] = useState(!initialUser);
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
@@ -66,18 +65,29 @@ export function AuthProvider({
   const hasFetchedInitial = useRef(false);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     const init = async () => {
       if (hasFetchedInitial.current) return;
       hasFetchedInitial.current = true;
 
-      if (initialUser) {
-        await fetchDashboards(initialUser.id);
-      } else {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          setUser(session.user);
-          await fetchDashboards(session.user.id);
+      try {
+        if (initialUser) {
+          setUser(initialUser);
+          await fetchDashboards(initialUser.id);
+        } else {
+          // ใช้ getSession แบบระมัดระวังเพื่อเลี่ยง Lock issue
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error) console.warn("Auth Lock/Session Warning:", error.message);
+          
+          if (session?.user) {
+            setUser(session.user);
+            await fetchDashboards(session.user.id);
+          }
         }
+      } catch (err) {
+        console.error("Auth Init Error:", err);
+      } finally {
         setLoading(false);
       }
     };
@@ -85,6 +95,7 @@ export function AuthProvider({
     init();
 
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log(`🔐 [Auth] Event: ${event}`);
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setDashboards([]);
@@ -122,7 +133,7 @@ export function AuthProvider({
       authSub.unsubscribe();
       supabase.removeChannel(dashChannel);
     };
-  }, [supabase, fetchDashboards, initialUser]);
+  }, [supabase, fetchDashboards, initialUser, user]);
 
   const handleSetSelectedDashboardId = (id: string) => {
     setSelectedDashboardId(id);
