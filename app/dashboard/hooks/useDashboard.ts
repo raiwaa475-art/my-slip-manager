@@ -124,7 +124,9 @@ export function useDashboard(user: User | null) {
   return {
     dashboards,
     activeDashboard,
-    setActiveDashboard: (d: Dashboard | null) => d && setSelectedDashboardId(d.id),
+    setActiveDashboard: useCallback((d: Dashboard | null) => {
+      if (d) setSelectedDashboardId(d.id);
+    }, [setSelectedDashboardId]),
     setupMode,
     setSetupMode,
     newDashboardName,

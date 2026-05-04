@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { format, subMonths } from "date-fns";
 
@@ -60,24 +60,28 @@ export default function Dashboard() {
   if (!user) return <LoginRequiredView />;
   if (dash.setupMode) return <SetupDashboardView dash={dash} />;
 
-  const totalIncome = tx.transactions.filter(t => t.amount > 0).reduce((acc, t) => acc + t.amount, 0);
-  const totalExpense = Math.abs(tx.transactions.filter(t => t.amount < 0).reduce((acc, t) => acc + t.amount, 0));
-  
-  const categoryData = CATEGORIES.filter(c => c.id !== "รายรับ").map(cat => ({
-    name: cat.label, 
-    value: Math.abs(tx.transactions.filter(t => t.category === cat.id && t.amount < 0).reduce((acc, t) => acc + t.amount, 0)), 
-    color: cat.color 
-  })).filter(c => c.value > 0);
+  const { totalIncome, totalExpense, categoryData, trendData } = useMemo(() => {
+    const income = tx.transactions.filter(t => t.amount > 0).reduce((acc, t) => acc + t.amount, 0);
+    const expense = Math.abs(tx.transactions.filter(t => t.amount < 0).reduce((acc, t) => acc + t.amount, 0));
+    
+    const catData = CATEGORIES.filter(c => c.id !== "รายรับ").map(cat => ({
+      name: cat.label, 
+      value: Math.abs(tx.transactions.filter(t => t.category === cat.id && t.amount < 0).reduce((acc, t) => acc + t.amount, 0)), 
+      color: cat.color 
+    })).filter(c => c.value > 0);
 
-  const trendData = Array.from({ length: 5 }).map((_, i) => {
-    const d = subMonths(new Date(), 4 - i);
-    const mStr = format(d, "yyyy-MM");
-    return { 
-      name: format(d, "MMM"), 
-      income: tx.transactions.filter(t => t.date.startsWith(mStr) && t.amount > 0).reduce((acc, t) => acc + t.amount, 0),
-      spent: Math.abs(tx.transactions.filter(t => t.date.startsWith(mStr) && t.amount < 0).reduce((acc, t) => acc + t.amount, 0))
-    };
-  });
+    const tData = Array.from({ length: 5 }).map((_, i) => {
+      const d = subMonths(new Date(), 4 - i);
+      const mStr = format(d, "yyyy-MM");
+      return { 
+        name: format(d, "MMM"), 
+        income: tx.transactions.filter(t => t.date.startsWith(mStr) && t.amount > 0).reduce((acc, t) => acc + t.amount, 0),
+        spent: Math.abs(tx.transactions.filter(t => t.date.startsWith(mStr) && t.amount < 0).reduce((acc, t) => acc + t.amount, 0))
+      };
+    });
+
+    return { totalIncome: income, totalExpense: expense, categoryData: catData, trendData: tData };
+  }, [tx.transactions]);
 
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors">

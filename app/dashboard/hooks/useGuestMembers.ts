@@ -10,8 +10,8 @@ export function useGuestMembers(activeDashboard: Dashboard | null, setActiveDash
   const { toast } = useToast();
   const { updateDashboardMetadata } = useAuth();
   
-  // ใช้ข้อมูลจาก activeDashboard โดยตรง ไม่ต้องมี State แยก
-  const guestMembers = activeDashboard?.metadata?.guest_members || [];
+  // Memoize guestMembers เพื่อไม่ให้เกิด Array ใหม่ทุกครั้งที่ Render (ป้องกัน Infinite Loop ใน useDebts)
+  const guestMembers = useMemo(() => activeDashboard?.metadata?.guest_members || [], [activeDashboard?.metadata?.guest_members]);
   
   const [newGuestName, setNewGuestName] = useState("");
   const [promptPayId, setPromptPayId] = useState("");
