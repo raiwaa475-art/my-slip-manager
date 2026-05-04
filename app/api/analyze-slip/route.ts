@@ -16,16 +16,19 @@ async function getWorker() {
   if (workerPromise) return workerPromise;
   
   workerPromise = (async () => {
-    const workerPath = path.join(process.cwd(), "node_modules/tesseract.js/src/worker-script/node/index.js");
-    const corePath = path.join(process.cwd(), "node_modules/tesseract.js-core/tesseract-core.wasm.js");
-    
-    return await createWorker("tha+eng", 1, {
-      workerPath,
-      corePath,
+    const options: any = {
       langPath: path.join(process.cwd(), "lang-data"),
       cachePath: path.join(process.cwd(), "lang-data"),
       gzip: false,
-    });
+    };
+
+    // Only use local worker paths in development to avoid bundling issues in serverless environments
+    if (process.env.NODE_ENV === 'development') {
+      options.workerPath = path.join(process.cwd(), "node_modules/tesseract.js/src/worker-script/node/index.js");
+      options.corePath = path.join(process.cwd(), "node_modules/tesseract.js-core/tesseract-core.wasm.js");
+    }
+    
+    return await createWorker("tha+eng", 1, options);
   })();
   
   return workerPromise;
