@@ -56,10 +56,6 @@ export default function Dashboard() {
   const guests = useGuestMembers(dash.activeDashboard, dash.setActiveDashboard);
   const debt = useDebts(user, tx.transactions, guests.members, guests.guestMembers, dash.activeDashboard?.type || null);
 
-  if (dash.loading || authLoading) return <div className="flex min-h-screen bg-background items-center justify-center"><Loader2 className="w-12 h-12 text-accent animate-spin" /></div>;
-  if (!user) return <LoginRequiredView />;
-  if (dash.setupMode) return <SetupDashboardView dash={dash} />;
-
   const { totalIncome, totalExpense, categoryData, trendData } = useMemo(() => {
     const income = tx.transactions.filter(t => t.amount > 0).reduce((acc, t) => acc + t.amount, 0);
     const expense = Math.abs(tx.transactions.filter(t => t.amount < 0).reduce((acc, t) => acc + t.amount, 0));
@@ -82,6 +78,10 @@ export default function Dashboard() {
 
     return { totalIncome: income, totalExpense: expense, categoryData: catData, trendData: tData };
   }, [tx.transactions]);
+
+  if (dash.loading || authLoading) return <div className="flex min-h-screen bg-background items-center justify-center"><Loader2 className="w-12 h-12 text-accent animate-spin" /></div>;
+  if (!user) return <LoginRequiredView />;
+  if (dash.setupMode) return <SetupDashboardView dash={dash} />;
 
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors">
