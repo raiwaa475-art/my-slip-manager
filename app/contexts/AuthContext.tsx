@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User, Dashboard } from "@/types";
 import { useToast } from "@/app/components/ui/Toast";
@@ -62,46 +62,49 @@ export function AuthProvider({
     }
   }, [supabase]);
 
-  useEffect(() => {
-    if (initialUser && dashboards.length === 0) {
-      fetchDashboards(initialUser.id);
-    }
+  const hasFetchedInitial = useRef(false);
 
-    const checkUser = async () => {
-      // ถ้ามี initialUser แล้ว ไม่ต้องดึง session ซ้ำเพื่อความเร็ว (แต่ยังคงดึงเพื่อความถูกต้องของข้อมูลล่าสุด)
-      if (!initialUser) {
+  useEffect(() => {
+    const init = async () => {
+      if (hasFetchedInitial.current) return;
+      hasFetchedInitial.current = true;
+
+      if (initialUser) {
+        await fetchDashboards(initialUser.id);
+      } else {
         const { data: { session } } = await supabase.auth.getSession();
-        setUser(session?.user ?? null);
         if (session?.user) {
+          setUser(session.user);
           await fetchDashboards(session.user.id);
         }
         setLoading(false);
       }
     };
-    checkUser();
 
-    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchDashboards(session.user.id);
-      } else {
+    init();
+
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
         setDashboards([]);
         setSelectedDashboardId("");
+        setLoading(false);
+        return;
+      }
+
+      if (session?.user) {
+        setUser(session.user);
+        await fetchDashboards(session.user.id);
+        setLoading(false);
       }
     });
 
-    // Real-time subscription for dashboard changes
     const dashChannel = supabase
       .channel('dashboards-realtime')
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'dashboards'
-        },
+        { event: 'UPDATE', schema: 'public', table: 'dashboards' },
         (payload) => {
-          console.log('📦 [AuthContext] Dashboard updated via real-time:', payload);
           setDashboards(prev => prev.map(d => 
             d.id === payload.new.id ? { ...d, ...payload.new } : d
           ));
@@ -113,7 +116,7 @@ export function AuthProvider({
       authSub.unsubscribe();
       supabase.removeChannel(dashChannel);
     };
-  }, [supabase, fetchDashboards]);
+  }, [supabase, fetchDashboards, initialUser]);
 
   const handleSetSelectedDashboardId = (id: string) => {
     setSelectedDashboardId(id);
