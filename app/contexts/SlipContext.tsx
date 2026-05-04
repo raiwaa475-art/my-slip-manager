@@ -113,6 +113,10 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
     const filesToProcess = files.slice(0, remainingSlots);
 
     for (const file of filesToProcess) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast(`ไฟล์ ${file.name} มีขนาดใหญ่เกินไป (จำกัด 10MB)`, "error");
+        continue;
+      }
       try {
         const resizedBase64 = await resizeImage(file);
         const newSlip: SlipItem = {

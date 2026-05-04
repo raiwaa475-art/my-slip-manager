@@ -12,23 +12,40 @@ let workerPromise: Promise<Worker> | null = null;
 const lastRequestTime = new Map<string, number>();
 const RATE_LIMIT_MS = 5000; // 5 seconds between OCR requests
 
+interface TesseractOptions {
+  workerPath: string;
+  corePath: string;
+  langPath: string;
+  cachePath: string;
+  gzip: boolean;
+}
+
 async function getWorker() {
-  if (workerPromise) return workerPromise;
+  if (workerPromise) {
+    try {
+      await workerPromise;
+      return workerPromise;
+    } catch (e) {
+      console.error("Worker singleton failed, resetting...", e);
+      workerPromise = null;
+    }
+  }
   
   workerPromise = (async () => {
-    const options: any = {
-      langPath: path.join(process.cwd(), "lang-data"),
-      cachePath: path.join(process.cwd(), "lang-data"),
-      gzip: false,
-    };
-
-    // Only use local worker paths in development to avoid bundling issues in serverless environments
-    if (process.env.NODE_ENV === 'development') {
-      options.workerPath = path.join(process.cwd(), "node_modules/tesseract.js/src/worker-script/node/index.js");
-      options.corePath = path.join(process.cwd(), "node_modules/tesseract.js-core/tesseract-core.wasm.js");
+    try {
+      const options: TesseractOptions = {
+        workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+        corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0/tesseract-core-simd.wasm.js',
+        langPath: path.join(process.cwd(), "lang-data"),
+        cachePath: path.join(process.cwd(), "lang-data"),
+        gzip: false,
+      };
+      
+      return await createWorker("tha+eng", 1, options);
+    } catch (err) {
+      workerPromise = null; // Reset on failure
+      throw err;
     }
-    
-    return await createWorker("tha+eng", 1, options);
   })();
   
   return workerPromise;
@@ -61,7 +78,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Image data is required" }, { status: 400 });
     }
 
-    const base64Data = image.split(",")[1];
+    const base64Data = image.includes(",") ? image.split(",")[1] : image;
+    if (!base64Data) {
+      return NextResponse.json({ error: "Invalid image format" }, { status: 400 });
+    }
     const buffer = Buffer.from(base64Data, "base64");
 
     // 1. Image Pre-processing for better OCR (Aggressive for small text)
@@ -85,7 +105,9 @@ export async function POST(req: Request) {
         const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
         const code = jsQR(new Uint8ClampedArray(data), info.width, info.height);
         if (code) qrData = code.data;
-    } catch { }
+    } catch (qrErr) { 
+        console.error("QR Scan Error:", qrErr);
+    }
 
     // 4. Text Normalization and Cleaning
     const lines = text.split('\n')
@@ -132,6 +154,15 @@ export async function POST(req: Request) {
     for (const pattern of patterns) {
       const match = normalizedText.match(pattern.regex);
       if (match) {
+        // Validation: Ensure numeric dates are not part of a longer account number
+        if (pattern.type === 'numeric') {
+          const index = match.index || 0;
+          const surrounding = normalizedText.substring(Math.max(0, index - 1), index + match[0].length + 1);
+          // If surrounded by digits, it's likely an account number or other numeric ID
+          if (/\d/.test(surrounding.charAt(0)) || /\d/.test(surrounding.charAt(surrounding.length - 1))) {
+            continue;
+          }
+        }
         const [, d, m, y] = match;
         const day = parseInt(d);
         let month = 0;
