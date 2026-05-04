@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { format, subMonths } from "date-fns";
-import { createClient } from "@/lib/supabase/client";
-import type { SlipItem, User, AnalysisResult, Transaction } from "../../../types";
+import { useAuth } from "@/app/contexts/AuthContext";
+import type { Transaction, User } from "../../../types";
 import { useToast } from "@/app/components/ui/Toast";
 import { useConfirm } from "@/app/components/ui/ConfirmDialog";
+
+import { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
 export function useTransactions(user: User | null, activeDashboardId: string | null) {
   const { toast } = useToast();
@@ -24,7 +26,7 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
   const [isSplit, setIsSplit] = useState(false);
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
 
-  const supabase = useMemo(() => createClient(), []);
+  const { supabase } = useAuth();
 
   const fetchTransactions = useCallback(async (dashboardId: string) => {
     setLoading(true);
@@ -52,7 +54,7 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
 
     const setupSubscription = (dashboardId: string | null) => {
       const channel = supabase
-        .channel('schema-db-changes')
+        .channel(`transactions-${dashboardId || user?.id}`)
         .on(
           'postgres_changes',
           {
@@ -61,7 +63,7 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
             table: 'transactions',
             filter: dashboardId ? `dashboard_id=eq.${dashboardId}` : `user_id=eq.${user?.id}`
           },
-          (payload) => {
+          (payload: RealtimePostgresChangesPayload<Transaction>) => {
             console.log('Real-time change received:', payload);
             if (payload.eventType === 'INSERT') {
               setTransactions(prev => {

@@ -18,9 +18,11 @@ interface AuthContextType {
   leaveDashboard: (dashboardId: string) => Promise<void>;
   deleteDashboard: (dashboardId: string) => Promise<void>;
   updateDashboardMetadata: (dashboardId: string, metadata: Dashboard['metadata']) => Promise<void>;
+  supabase: any; // Type strictly if needed, but for now matching existing patterns
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const supabase = createClient();
 
 export function AuthProvider({ 
   children, 
@@ -34,7 +36,6 @@ export function AuthProvider({
   const [loading, setLoading] = useState(!initialUser);
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [selectedDashboardId, setSelectedDashboardId] = useState<string>("");
-  const supabase = useMemo(() => createClient(), []);
 
   const fetchDashboards = useCallback(async (userId: string) => {
     try {
@@ -103,11 +104,16 @@ export function AuthProvider({
       .channel('dashboards-realtime')
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'dashboards' },
-        (payload) => {
-          setDashboards(prev => prev.map(d => 
-            d.id === payload.new.id ? { ...d, ...payload.new } : d
-          ));
+        { event: '*', schema: 'public', table: 'dashboards' },
+        () => {
+          if (user) fetchDashboards(user.id);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'dashboard_users' },
+        () => {
+          if (user) fetchDashboards(user.id);
         }
       )
       .subscribe();
@@ -329,7 +335,8 @@ export function AuthProvider({
     joinDashboard,
     leaveDashboard,
     deleteDashboard,
-    updateDashboardMetadata
+    updateDashboardMetadata,
+    supabase
   };
 
 

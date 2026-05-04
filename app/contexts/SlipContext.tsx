@@ -8,6 +8,7 @@ import type { SlipItem, AnalysisResult, Transaction } from "@/types";
 import { createWorker, type Worker } from "tesseract.js";
 import jsQR from "jsqr";
 
+
 interface SlipContextType {
   slips: SlipItem[];
   setSlips: React.Dispatch<React.SetStateAction<SlipItem[]>>;
@@ -28,13 +29,12 @@ interface SlipContextType {
 const SlipContext = createContext<SlipContextType | undefined>(undefined);
 
 export function SlipProvider({ children }: { children: React.ReactNode }) {
-  const { user, selectedDashboardId } = useAuth();
+  const { user, selectedDashboardId, supabase: authSupabase } = useAuth();
   const { toast } = useToast();
   const [slips, setSlips] = useState<SlipItem[]>([]);
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
   const workerRef = useRef<Worker | null>(null);
-  const supabase = useMemo(() => createClient(), []);
 
   // Cleanup worker on unmount
   useEffect(() => {
@@ -418,7 +418,7 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
       }
 
       console.log(`[Save] Inserting data to Supabase:`, insertData);
-      const { error } = await supabase.from('transactions').insert(insertData);
+      const { error } = await authSupabase.from('transactions').insert(insertData);
       if (error) throw error;
       
       console.log(`[Save] ✅ Save successful for: ${id}`);
@@ -483,11 +483,10 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
           insertData.dashboard_id = selectedDashboardId;
         }
 
-        console.log(`[SaveAll] 🔗 Using Supabase URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
         console.log(`[SaveAll] 🚀 Sending insert request to Supabase...`, insertData);
         
-        // Try creating a fresh client for this request to rule out stale state
-        const { error } = await supabase.from('transactions').insert(insertData);
+        // Use authSupabase which has the correct session
+        const { error } = await authSupabase.from('transactions').insert(insertData);
         
         if (error) {
           console.error(`[SaveAll] ❌ Supabase Error:`, error);
