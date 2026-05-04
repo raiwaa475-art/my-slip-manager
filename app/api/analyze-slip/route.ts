@@ -34,15 +34,21 @@ async function getWorker() {
   
   workerPromise = (async () => {
     try {
+      // ใช้ require.resolve เพื่อหา Path ที่แน่นอน และใช้ worker.min.js เพื่อความเสถียร
+      const workerPath = require.resolve('tesseract.js/dist/worker.min.js');
+      const corePath = require.resolve('tesseract.js-core/tesseract-core.wasm.js');
+
       const options: TesseractOptions = {
-        workerPath: require.resolve('tesseract.js/src/worker-script/node/index.js'),
-        corePath: require.resolve('tesseract.js-core/tesseract-core.wasm.js'),
+        workerPath,
+        corePath,
         langPath: path.join(process.cwd(), "lang-data"),
         cachePath: path.join(process.cwd(), "lang-data"),
         gzip: false,
       };
       
-      return await createWorker("tha+eng", 1, options);
+      // ใน v5: createWorker(langs, oem, options)
+      // ส่ง undefined ให้ oem เพื่อใช้ค่าเริ่มต้น และส่ง options เป็นตัวที่ 3
+      return await createWorker("tha+eng", undefined, options);
     } catch (err) {
       workerPromise = null; // Reset on failure
       throw err;
