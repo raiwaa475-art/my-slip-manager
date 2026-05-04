@@ -419,17 +419,17 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
 
       console.log(`[Save] 🚀 Sending data to Supabase (Single):`, insertData);
       
-      const insertPromise = authSupabase.from('transactions').insert(insertData).select();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Supabase request timed out (15s)")), 15000)
-      );
-
       console.time(`[Save] Request Duration - ${id}`);
-      const { data, error } = await Promise.race([insertPromise, timeoutPromise]) as any;
+      const { data, error } = await authSupabase.from('transactions').insert(insertData).select();
       console.timeEnd(`[Save] Request Duration - ${id}`);
       
       if (error) {
-        console.error(`[Save] ❌ Supabase Error:`, error);
+        console.error(`[Save] ❌ Supabase Error Detail:`, {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        });
         throw error;
       }
       
@@ -497,17 +497,17 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
 
         console.log(`[SaveAll] 🚀 Sending insert request to Supabase...`, insertData);
         
-        const insertPromise = authSupabase.from('transactions').insert(insertData).select();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Supabase request timed out (15s)")), 15000)
-        );
-
         console.time(`[SaveAll] Request Duration - ${slip.id}`);
-        const { data, error } = await Promise.race([insertPromise, timeoutPromise]) as any;
+        const { data, error } = await authSupabase.from('transactions').insert(insertData).select();
         console.timeEnd(`[SaveAll] Request Duration - ${slip.id}`);
         
         if (error) {
-          console.error(`[SaveAll] ❌ Supabase Error for ${slip.id}:`, error);
+          console.error(`[SaveAll] ❌ Supabase Error for ${slip.id}:`, {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+          });
           throw error;
         }
         

@@ -64,7 +64,7 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
             filter: dashboardId ? `dashboard_id=eq.${dashboardId}` : `user_id=eq.${user?.id}`
           },
           (payload: RealtimePostgresChangesPayload<Transaction>) => {
-            console.log('Real-time change received:', payload);
+            console.log('✨ [Realtime] Change received:', payload);
             if (payload.eventType === 'INSERT') {
               setTransactions(prev => {
                 if (prev.find(t => t.id === payload.new.id)) return prev;
@@ -77,23 +77,31 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
             }
           }
         )
-        .subscribe();
+        .subscribe((status: string) => {
+          console.log(`📡 [Realtime] Subscription Status for ${dashboardId || 'personal'}:`, status);
+        });
       
       return channel;
     };
 
     if (activeDashboardId) {
+      console.log(`📂 [Dashboard] Switching to Dashboard: ${activeDashboardId}`);
       fetchTransactions(activeDashboardId);
       subscription = setupSubscription(activeDashboardId);
     } else if (user) {
+      console.log(`👤 [Dashboard] Switching to Personal View`);
       const fetchUserTransactions = async () => {
         setLoading(true);
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('transactions')
           .select('*')
           .eq('user_id', user.id)
           .order('date', { ascending: false })
           .limit(100);
+        
+        if (error) {
+          console.error("❌ [Dashboard] Error fetching personal transactions:", error);
+        }
         setTransactions(data || []);
         setLoading(false);
       };

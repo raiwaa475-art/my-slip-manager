@@ -129,6 +129,20 @@ function HomeContent() {
     setBulkModalOpen(false);
   };
 
+  // Auto-enable split when opening modal for a split_bill dashboard
+  const openBulkModal = () => {
+    const activeDash = dashboards.find(d => d.id === selectedDashboardId);
+    if (activeDash?.type === 'split_bill') {
+      setBulkSplit(true);
+      // Default to split between everyone in the dashboard (including user)
+      setBulkSplitBetween(members.map(m => m.user_id));
+    } else {
+      setBulkSplit(false);
+      setBulkSplitBetween([]);
+    }
+    setBulkModalOpen(true);
+  };
+
   const selectedCount = slips.filter(s => s.selected).length;
   const doneSlips = useMemo(() => slips.filter(s => s.status === 'done'), [slips]);
   const totalAmount = useMemo(() => doneSlips.reduce((acc, s) => acc + s.result.amount, 0), [doneSlips]);
@@ -292,7 +306,7 @@ function HomeContent() {
                   สแกนทั้งหมด
                </button>
                {slips.some(s => s.status === 'done') && (
-                 <button onClick={() => setBulkModalOpen(true)} disabled={isSavingAll} className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20">
+                 <button onClick={openBulkModal} disabled={isSavingAll} className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20">
                     {isSavingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                     บันทึกทั้งหมด
                  </button>
@@ -356,7 +370,7 @@ function HomeContent() {
               </div>
               <div className="flex items-center gap-2">
                  <button onClick={() => setShowSaveToast(false)} className="p-3 text-muted hover:text-foreground transition-colors"><X className="w-5 h-5" /></button>
-                 <button onClick={() => setBulkModalOpen(true)} disabled={isSavingAll} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+                 <button onClick={openBulkModal} disabled={isSavingAll} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2">
                     {isSavingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     บันทึกตอนนี้
                  </button>

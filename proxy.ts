@@ -6,7 +6,7 @@ export async function proxy(request: NextRequest) {
     request,
   })
 
-  // สร้าง client เฉพาะเมื่อจำเป็น
+  // สร้าง client เพื่อจัดการ cookies (แต่ไม่เรียก getUser เพื่อความเร็ว)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -24,12 +24,6 @@ export async function proxy(request: NextRequest) {
       },
     }
   )
-
-  // ดึง User เฉพาะกรณีที่มี Session cookie อยู่แล้วเพื่อความรวดเร็ว
-  const hasSession = request.cookies.getAll().some(c => c.name.includes('supabase-auth-token') || c.name.includes('sb-'));
-  if (hasSession) {
-    await supabase.auth.getUser()
-  }
 
   return supabaseResponse
 }
