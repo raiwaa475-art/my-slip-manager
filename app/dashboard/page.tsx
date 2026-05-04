@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { format, subMonths } from "date-fns";
-import { createClient } from "@/lib/supabase/client";
 
 // Hooks
 import { useDashboard } from "./hooks/useDashboard";
@@ -18,11 +17,28 @@ import { TransactionModal } from "./components/TransactionModal";
 import { PaymentQRModal } from "./components/PaymentQRModal";
 import { MembersList } from "./components/MembersList";
 import { DashboardHeader, PersonalStats, SplitStats } from "./components/DashboardUI";
-import { CalendarView, CategoryPieChart, GroupContributionChart, MonthlyTrendChart } from "./components/DashboardCharts";
 import { TransactionList, DebtSummary } from "./components/TransactionList";
 import { SettingsModal, SplitBillAlert, LoginRequiredView, SetupDashboardView } from "./components/DashboardModals";
-import { User, DebtItem } from "../../types";
+import { DebtItem } from "../../types";
 import { CATEGORIES } from "@/lib/constants";
+
+// Lazy-load recharts-heavy chart components (~300KB savings on initial load)
+import type * as ChartsModule from "./components/DashboardCharts";
+type ChartsType = typeof ChartsModule;
+
+function useLazyCharts() {
+  const [Charts, setCharts] = useState<ChartsType | null>(null);
+  useEffect(() => {
+    import("./components/DashboardCharts").then(mod => setCharts(mod));
+  }, []);
+  return Charts;
+}
+
+const ChartLoader = ({ height = 300 }: { height?: number }) => (
+  <div className={`w-full flex items-center justify-center text-muted`} style={{ height }}>
+    <Loader2 className="w-6 h-6 animate-spin" />
+  </div>
+);
 
 const scrollbarStyles = `.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-track { background: transparent; } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(155, 155, 155, 0.1); border-radius: 10px; } .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(155, 155, 155, 0.2); }`;
 
@@ -31,18 +47,14 @@ import { useAuth } from "../contexts/AuthContext";
 export default function Dashboard() {
   const { user, loading: authLoading, dashboards, selectedDashboardId, setSelectedDashboardId } = useAuth();
   const [activeMonth] = useState(new Date());
-  const [isMounted, setIsMounted] = useState(false);
   const [selectedDebt, setSelectedDebt] = useState<DebtItem | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const Charts = useLazyCharts();
 
   const dash = useDashboard(user);
   const tx = useTransactions(user, dash.activeDashboard?.id || null);
   const guests = useGuestMembers(dash.activeDashboard, dash.setActiveDashboard);
   const debt = useDebts(user, tx.transactions, guests.members, guests.guestMembers, dash.activeDashboard?.type || null);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
 
   if (dash.loading || authLoading) return <div className="flex min-h-screen bg-background items-center justify-center"><Loader2 className="w-12 h-12 text-accent animate-spin" /></div>;
   if (!user) return <LoginRequiredView />;
@@ -83,13 +95,13 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
             <div className="lg:col-span-2 xl:col-span-3 glass rounded-3xl p-5 md:p-8 border border-border bg-card/50">
-              {dash.activeDashboard?.type !== "split_bill" ? <CalendarView activeMonth={activeMonth} transactions={tx.transactions} /> : <GroupContributionChart isMounted={isMounted} members={guests.members} transactions={tx.transactions} userId={user.id} />}
+              {!Charts ? <ChartLoader /> : dash.activeDashboard?.type !== "split_bill" ? <Charts.CalendarView activeMonth={activeMonth} transactions={tx.transactions} /> : <Charts.GroupContributionChart isMounted={!!Charts} members={guests.members} transactions={tx.transactions} userId={user.id} />}
             </div>
-            <CategoryPieChart isMounted={isMounted} data={categoryData} totalExpense={totalExpense} />
+            {Charts ? <Charts.CategoryPieChart isMounted={!!Charts} data={categoryData} totalExpense={totalExpense} /> : <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-card/50"><ChartLoader /></div>}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {dash.activeDashboard?.type !== "split_bill" ? <MonthlyTrendChart isMounted={isMounted} data={trendData} /> : (debt.debts.owes.length > 0 || debt.debts.owed.length > 0) && <DebtSummary debts={debt.debts} onCollect={(d: DebtItem) => { setSelectedDebt(d); setIsPaymentModalOpen(true); }} />}
+            {dash.activeDashboard?.type !== "split_bill" ? (Charts ? <Charts.MonthlyTrendChart isMounted={!!Charts} data={trendData} /> : <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-card/50"><ChartLoader height={250} /></div>) : (debt.debts.owes.length > 0 || debt.debts.owed.length > 0) && <DebtSummary debts={debt.debts} onCollect={(d: DebtItem) => { setSelectedDebt(d); setIsPaymentModalOpen(true); }} />}
             {dash.activeDashboard?.type === "split_bill" && <MembersList {...guests} user={user} activeDashboard={dash.activeDashboard} />}
             <TransactionList transactions={tx.transactions} onEdit={tx.handleEdit} onDelete={tx.deleteTransaction} />
           </div>

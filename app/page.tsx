@@ -23,8 +23,17 @@ import { BulkSaveModal } from "./components/BulkSaveModal";
 
 import { useAuth } from "./contexts/AuthContext";
 import { useSlips } from "./contexts/SlipContext";
+import { SlipProvider } from "./contexts/SlipContext";
 
 export default function Home() {
+  return (
+    <SlipProvider>
+      <HomeContent />
+    </SlipProvider>
+  );
+}
+
+function HomeContent() {
   const { toast } = useToast();
   const { user, loading, dashboards, selectedDashboardId, setSelectedDashboardId, signOut } = useAuth();
   const { 

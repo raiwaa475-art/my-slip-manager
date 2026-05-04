@@ -1,8 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { createWorker, type Worker } from "tesseract.js";
-import jsQR from "jsqr";
+import { createContext, useContext, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/app/components/ui/Toast";
 import { useAuth } from "./AuthContext";
@@ -13,7 +11,6 @@ interface SlipContextType {
   setSlips: React.Dispatch<React.SetStateAction<SlipItem[]>>;
   isProcessingAll: boolean;
   isSavingAll: boolean;
-  worker: Worker | null;
   addManualSlip: () => void;
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   updateSlip: (id: string, updates: Omit<Partial<SlipItem>, 'result'> & { result?: Partial<AnalysisResult> }) => void;
@@ -34,41 +31,7 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   const [slips, setSlips] = useState<SlipItem[]>([]);
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
-  const [worker, setWorker] = useState<Worker | null>(null);
-  const workerPromiseRef = useRef<Promise<Worker | null> | null>(null);
   const supabase = useMemo(() => createClient(), []);
-
-  // Lazy initialize Tesseract Worker
-  const initWorker = useCallback(async () => {
-    if (worker) return worker;
-    if (workerPromiseRef.current) return workerPromiseRef.current;
-
-    workerPromiseRef.current = (async () => {
-      try {
-        const w = await createWorker("tha+eng", 1, {
-          langPath: "/lang-data",
-          gzip: false,
-        });
-        setWorker(w);
-        return w;
-      } catch (err) {
-        console.error("Failed to initialize Tesseract worker:", err);
-        toast("ไม่สามารถเริ่มระบบสแกนได้ โปรดลองใหม่อีกครั้ง", "error");
-        workerPromiseRef.current = null; // Reset on failure
-        return null;
-      }
-    })();
-
-    return workerPromiseRef.current;
-  }, [worker, toast]);
-
-  useEffect(() => {
-    return () => {
-      if (worker) {
-        worker.terminate();
-      }
-    };
-  }, [worker]);
 
   const updateSlip = useCallback((id: string, updates: Omit<Partial<SlipItem>, 'result'> & { result?: Partial<AnalysisResult> }) => {
     setSlips((prev) => prev.map((s) => {
@@ -187,60 +150,38 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
     setSlips(prev => prev.filter(s => !s.selected));
   };
 
+  // OCR via Server API route — no client-side Tesseract/jsQR needed
   const analyzeSingleSlip = async (id: string) => {
     const slip = slips.find((s) => s.id === id);
     if (!slip || slip.status === "analyzing") return;
 
-    let currentWorker = worker;
-    if (!currentWorker) {
-      updateSlip(id, { status: "analyzing" }); // Show loading even during init
-      currentWorker = await initWorker();
-    }
-
-    if (!currentWorker) {
-      updateSlip(id, { status: "error", error: "ระบบสแกนไม่พร้อม" });
-      return;
-    }
-
     updateSlip(id, { status: "analyzing", error: undefined });
 
     try {
-      const { data: { text } } = await currentWorker.recognize(slip.preview);
+      const res = await fetch("/api/analyze-slip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: slip.preview }),
+      });
 
-      let qrData = "Not found";
-      try {
-        const img = new window.Image();
-        img.src = slip.preview;
-        await new Promise(r => img.onload = r);
-        
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        ctx?.drawImage(img, 0, 0);
-        const imageData = ctx?.getImageData(0, 0, canvas.width, canvas.height);
-        
-        if (imageData) {
-          const code = jsQR(imageData.data, imageData.width, imageData.height);
-          if (code) qrData = code.data;
-        }
-      } catch (e) {
-        console.error("QR Scan error:", e);
+      if (res.status === 429) {
+        const data = await res.json();
+        toast(data.error || "กรุณารอสักครู่ก่อนส่งสลิปถัดไป", "info");
+        updateSlip(id, { status: "pending" });
+        return;
       }
 
-      const normalizedText = text.replace(/\s+/g, ' ');
-      
-      let amount = 0;
-      const amountRegex = /(?:จำนวนเงิน|Amount|ยอดโอน|ยอดเงิน|Total|Sum|เงิน)\s*[:]?\s*([\d,]+\.\d{2})/i;
-      const amountMatch = normalizedText.match(amountRegex) || normalizedText.match(/([\d,]+\.\d{2})/);
-      if (amountMatch) {
-        amount = parseFloat((amountMatch[1] || amountMatch[0]).replace(/,/g, ""));
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `Server error: ${res.status}`);
       }
 
-      if (amount === 0) {
+      const result = await res.json();
+
+      if (!result.amount || result.amount === 0) {
         toast("สแกนไม่ได้: ไม่พบข้อมูลจำนวนเงินหรืออาจไม่ใช่รูปสลิป", "error");
-        updateSlip(id, { 
-          status: "error", 
+        updateSlip(id, {
+          status: "error",
           error: "สแกนไม่ได้ (ไม่พบข้อมูลสลิป)",
           result: {
             date: new Date().toISOString().split("T")[0],
@@ -253,77 +194,20 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      let date = new Date().toISOString().split("T")[0];
-      const thaiMonthPatterns = [
-        "ม\.?ค\.?|มกราคม", "ก\.?พ\.?|กุมภาพันธ์", "มี\.?ค\.?|มีนาคม", "เม\.?ย\.?|เมษายน", 
-        "พ\.?ค\.?|พฤษภาคม", "มิ\.?ย\.?|มิถุนายน", "ก\.?ค\.?|กรกฎาคม", "ส\.?ค\.?|สิงหาคม", 
-        "ก\.?ย\.?|กันยายน", "ต\.?ค\.?|ตุลาคม", "พ\.?ย\.?|พฤศจิกายน", "ธ\.?ค\.?|ธันวาคม"
-      ];
-
-      let foundDate = false;
-      const refMatch = normalizedText.match(/[A-Z]?(\d{4})(\d{2})(\d{2})\d{10,}/i);
-      if (refMatch) {
-        const y = parseInt(refMatch[1]);
-        const m = refMatch[2];
-        const d = refMatch[3];
-        if (y >= 2020 && y <= 2035 && parseInt(m) >= 1 && parseInt(m) <= 12 && parseInt(d) >= 1 && parseInt(d) <= 31) {
-          date = `${y}-${m}-${d}`;
-          foundDate = true;
-        }
-      }
-
-      if (!foundDate) {
-        for (let i = 0; i < thaiMonthPatterns.length; i++) {
-          const regex = new RegExp(`(\\d{1,2})\\s+(${thaiMonthPatterns[i]})\\s+(\\d{4})`, "i");
-          const match = normalizedText.match(regex);
-          if (match) {
-            const d = match[1].padStart(2, '0');
-            const m = (i + 1).toString().padStart(2, '0');
-            let y = parseInt(match[3]);
-            if (y > 2400) y -= 543;
-            date = `${y}-${m}-${d}`;
-            foundDate = true;
-            break;
-          }
-        }
-      }
-
-      if (!foundDate) {
-        const numericMatch = normalizedText.match(/(\d{1,2})[\/\-. ](\d{1,2})[\/\-. ](\d{4}|\d{2})/);
-        if (numericMatch) {
-          const d = numericMatch[1].padStart(2, '0');
-          const m = numericMatch[2].padStart(2, '0');
-          let y = parseInt(numericMatch[3]);
-          if (y > 2400) y -= 543;
-          if (y < 100) y += 2000;
-          if (parseInt(m) <= 12 && parseInt(d) <= 31) {
-            date = `${y}-${m}-${d}`;
-          }
-        }
-      }
-      
-      let receiver = "รายการจากสลิป";
-      const banks = ["KBank", "กสิกร", "SCB", "ไทยพาณิชย์", "Krungthai", "กรุงไทย", "KTB", "Bangkok Bank", "กรุงเทพ", "BBL", "TMB", "Thanachart", "ttb", "ทีทีบี", "GSB", "ออมสิน", "Bay", "Krungsri", "กรุงศรี", "UOB", "ยูโอบี"];
-      for (const bank of banks) {
-        if (text.toLowerCase().includes(bank.toLowerCase())) {
-          receiver = bank;
-          break;
-        }
-      }
-
-      updateSlip(id, { 
-        status: "done", 
+      updateSlip(id, {
+        status: "done",
         result: {
-          date,
-          amount,
-          receiver,
-          category: "อื่นๆ",
-          confidence: 0.8,
-          qr_raw: qrData
-        } 
+          date: result.date,
+          amount: result.amount,
+          receiver: result.receiver,
+          category: result.category || "อื่นๆ",
+          confidence: result.confidence || 0.8,
+          qr_raw: result.qr_raw
+        }
       });
     } catch (err) {
       const error = err as Error;
+      console.error("OCR API Error:", error);
       updateSlip(id, { status: "error", error: error.message });
     }
   };
@@ -424,7 +308,6 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
     setSlips,
     isProcessingAll,
     isSavingAll,
-    worker,
     addManualSlip,
     handleFileUpload,
     updateSlip,
