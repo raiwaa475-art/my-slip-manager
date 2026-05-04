@@ -62,6 +62,11 @@ export function AuthProvider({
     }
   }, [supabase]);
 
+  const userRef = useRef<User | null>(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   const hasFetchedInitial = useRef(false);
 
   useEffect(() => {
@@ -117,14 +122,14 @@ export function AuthProvider({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'dashboards' },
         () => {
-          if (user) fetchDashboards(user.id);
+          if (userRef.current) fetchDashboards(userRef.current.id);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'dashboard_users' },
         () => {
-          if (user) fetchDashboards(user.id);
+          if (userRef.current) fetchDashboards(userRef.current.id);
         }
       )
       .subscribe();
@@ -133,7 +138,7 @@ export function AuthProvider({
       authSub.unsubscribe();
       supabase.removeChannel(dashChannel);
     };
-  }, [supabase, fetchDashboards, initialUser, user]);
+  }, [supabase, fetchDashboards, initialUser]);
 
   const handleSetSelectedDashboardId = (id: string) => {
     setSelectedDashboardId(id);

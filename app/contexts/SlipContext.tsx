@@ -7,7 +7,6 @@ import { useAuth } from "./AuthContext";
 import type { SlipItem, AnalysisResult, Transaction } from "@/types";
 import { createWorker, type Worker } from "tesseract.js";
 import jsQR from "jsqr";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
 interface SlipContextType {
@@ -418,21 +417,9 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
         insertData.dashboard_id = selectedDashboardId;
       }
 
-      console.log(`[Save] 🚀 Using temp client to bypass locks...`);
-      const tempClient = createSupabaseClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { auth: { persistSession: false } }
-      );
-      
-      const { data: { session } } = await authSupabase.auth.getSession();
-      if (session) {
-        await tempClient.auth.setSession(session);
-      }
-
       console.log(`[Save] 🚀 Sending data to Supabase (Single):`, insertData);
       
-      const insertPromise = tempClient.from('transactions').insert(insertData).select();
+      const insertPromise = authSupabase.from('transactions').insert(insertData).select();
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error("Supabase request timed out (15s)")), 15000)
       );
@@ -508,21 +495,9 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
           insertData.dashboard_id = selectedDashboardId;
         }
 
-        console.log(`[SaveAll] 🚀 Using temp client to bypass locks...`);
-        const tempClient = createSupabaseClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          { auth: { persistSession: false } }
-        );
-        
-        const { data: { session } } = await authSupabase.auth.getSession();
-        if (session) {
-          await tempClient.auth.setSession(session);
-        }
-
         console.log(`[SaveAll] 🚀 Sending insert request to Supabase...`, insertData);
         
-        const insertPromise = tempClient.from('transactions').insert(insertData).select();
+        const insertPromise = authSupabase.from('transactions').insert(insertData).select();
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error("Supabase request timed out (15s)")), 15000)
         );
