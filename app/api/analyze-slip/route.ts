@@ -1,3 +1,4 @@
+import 'node-fetch';
 import { createWorker, type Worker } from "tesseract.js";
 import sharp from "sharp";
 import jsQR from "jsqr";
@@ -34,8 +35,8 @@ async function getWorker() {
   workerPromise = (async () => {
     try {
       const options: TesseractOptions = {
-        workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
-        corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0/tesseract-core-simd.wasm.js',
+        workerPath: require.resolve('tesseract.js/src/worker-script/node/index.js'),
+        corePath: require.resolve('tesseract.js-core/tesseract-core.wasm.js'),
         langPath: path.join(process.cwd(), "lang-data"),
         cachePath: path.join(process.cwd(), "lang-data"),
         gzip: false,
