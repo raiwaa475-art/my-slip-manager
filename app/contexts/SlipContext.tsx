@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/app/components/ui/Toast";
 import { useAuth } from "./AuthContext";
 import type { SlipItem, AnalysisResult, Transaction } from "@/types";
+import { createWorker, type Worker } from "tesseract.js";
+import jsQR from "jsqr";
 
 interface SlipContextType {
   slips: SlipItem[];
@@ -31,7 +33,15 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   const [slips, setSlips] = useState<SlipItem[]>([]);
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
+  const [worker, setWorker] = useState<Worker | null>(null);
   const supabase = useMemo(() => createClient(), []);
+
+  // Cleanup worker on unmount
+  useState(() => {
+    return () => {
+      if (worker) worker.terminate();
+    };
+  });
 
   const updateSlip = useCallback((id: string, updates: Omit<Partial<SlipItem>, 'result'> & { result?: Partial<AnalysisResult> }) => {
     setSlips((prev) => prev.map((s) => {
@@ -154,7 +164,7 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
     setSlips(prev => prev.filter(s => !s.selected));
   };
 
-  // OCR via Server API route — no client-side Tesseract/jsQR needed
+  // OCR via Client-side Tesseract — follows the 'Iron Rule' (No Server OCR)
   const analyzeSingleSlip = async (id: string) => {
     const slip = slips.find((s) => s.id === id);
     if (!slip || slip.status === "analyzing") return;
@@ -162,57 +172,142 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
     updateSlip(id, { status: "analyzing", error: undefined });
 
     try {
-      const res = await fetch("/api/analyze-slip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: slip.preview }),
-      });
-
-      if (res.status === 429) {
-        const data = await res.json();
-        toast(data.error || "กรุณารอสักครู่ก่อนส่งสลิปถัดไป", "info");
-        updateSlip(id, { status: "pending" });
-        return;
+      // 1. Prepare Tesseract Worker (Client Side)
+      let currentWorker = worker;
+      if (!currentWorker) {
+        currentWorker = await createWorker("tha+eng");
+        setWorker(currentWorker);
       }
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || `Server error: ${res.status}`);
+      // 2. Perform OCR
+      const { data: { text } } = await currentWorker.recognize(slip.preview);
+      const normalizedText = text.replace(/\s+/g, ' ');
+
+      // 3. Perform QR Scan (Client Side using Canvas)
+      let qrData = "Not found";
+      try {
+        const img = new window.Image();
+        img.src = slip.preview;
+        await new Promise((resolve) => { img.onload = resolve; });
+        
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          if (code) qrData = code.data;
+        }
+      } catch (qrErr) {
+        console.error("QR Scan Error:", qrErr);
       }
 
-      const result = await res.json();
+      // 4. Extraction Logic (Ported from Server)
+      const lines = text.split('\n')
+        .map((line: string) => line.trim())
+        .filter((line: string) => line.length > 2);
 
-      if (!result.amount || result.amount === 0) {
-        toast("สแกนไม่ได้: ไม่พบข้อมูลจำนวนเงินหรืออาจไม่ใช่รูปสลิป", "error");
-        updateSlip(id, {
-          status: "error",
-          error: "สแกนไม่ได้ (ไม่พบข้อมูลสลิป)",
-          result: {
-            date: new Date().toISOString().split("T")[0],
-            amount: 0,
-            receiver: "สแกนไม่สำเร็จ",
-            category: "อื่นๆ",
-            confidence: 0
+      const cleanText = lines.filter((line: string) => !line.match(/(?:Krungthai|กรุงไทย|จ่ายบิล|สำเร็จ|รหัสอ้างอิง|Transaction|Reference|บันทึก)/i)).join(' ');
+
+      // Amount Extraction
+      let amount = 0;
+      const amountRegex = /(?:จำนวนเงิน|Amount|ยอดโอน|ยอดเงิน|Total|Sum|เงิน)\s*[:]?\s*([\d,]+\.\d{2})/i;
+      const amountMatch = cleanText.match(amountRegex) || normalizedText.match(/([\d,]+\.\d{2})/);
+      if (amountMatch) {
+        amount = parseFloat((amountMatch[1] || amountMatch[0]).replace(/,/g, ""));
+      }
+
+      // Date Extraction
+      let date = new Date().toISOString().split("T")[0];
+      const thaiMonthsShort = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+      const thaiMonthsFull = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+      const engMonthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      
+      const patterns = [
+        { regex: /(\d{1,2})\s+([ก-ฮ\s\.]+)\s+(\d{2,4})/, type: 'thai' },
+        { regex: /(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{2,4})/, type: 'numeric' },
+        { regex: /(\d{1,2})[\s\.\-\/]*([a-z]{3,10})[\s\.\-\/]*(\d{2,4})/i, type: 'eng' }
+      ];
+
+      for (const pattern of patterns) {
+        const match = normalizedText.match(pattern.regex);
+        if (match) {
+          const [, d, m, y] = match;
+          const day = parseInt(d);
+          let month = 0;
+          let year = parseInt(y);
+
+          if (pattern.type === 'thai') {
+            const cleanM = m.replace(/[\s\.]/g, "");
+            let bestIdx = thaiMonthsShort.findIndex(tm => {
+              const tmClean = tm.replace(/[\s\.]/g, "");
+              return cleanM === tmClean || cleanM.includes(tmClean) || tmClean.includes(cleanM);
+            });
+            if (bestIdx === -1) {
+              bestIdx = thaiMonthsFull.findIndex(tm => tm.includes(cleanM) || cleanM.includes(tm.substring(0, 3)));
+            }
+            if (bestIdx !== -1) month = bestIdx + 1;
+          } else if (pattern.type === 'numeric') {
+            month = parseInt(m);
+          } else if (pattern.type === 'eng') {
+            const monthIdx = engMonthsShort.findIndex(em => m.toLowerCase().startsWith(em.toLowerCase()));
+            if (monthIdx !== -1) month = monthIdx + 1;
           }
-        });
-        return;
+
+          if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+            if (year < 100) {
+              if (year >= 60 && year <= 75) year = 2500 + year - 543;
+              else year = 2000 + year;
+            } else if (year > 2400) {
+              year -= 543;
+            }
+            date = `${year}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+            break;
+          }
+        }
+      }
+
+      // Bank/Receiver Hint
+      let receiver = "รายการจากสลิป";
+      const banks = ["KBank", "SCB", "Krungthai", "KTB", "Bangkok Bank", "BBL", "TMB", "Thanachart", "ttb", "GSB", "Bay", "Krungsri"];
+      for (const bank of banks) {
+        if (text.toLowerCase().includes(bank.toLowerCase())) {
+          receiver = bank;
+          break;
+        }
+      }
+
+      if (!amount || amount === 0) {
+        throw new Error("ไม่พบข้อมูลจำนวนเงินหรืออาจไม่ใช่รูปสลิป");
       }
 
       updateSlip(id, {
         status: "done",
         result: {
-          date: result.date,
-          amount: result.amount,
-          receiver: result.receiver,
-          category: result.category || "อื่นๆ",
-          confidence: result.confidence || 0.8,
-          qr_raw: result.qr_raw
+          date: date,
+          amount: amount,
+          receiver: receiver,
+          category: "อื่นๆ",
+          confidence: 0.8,
+          qr_raw: qrData
         }
       });
     } catch (err) {
       const error = err as Error;
-      console.error("OCR API Error:", error);
-      updateSlip(id, { status: "error", error: error.message });
+      console.error("Client OCR Error:", error);
+      updateSlip(id, { 
+        status: "error", 
+        error: error.message,
+        result: {
+          date: new Date().toISOString().split("T")[0],
+          amount: 0,
+          receiver: "สแกนไม่สำเร็จ",
+          category: "อื่นๆ",
+          confidence: 0
+        }
+      });
     }
   };
 
