@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { X, Loader2, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CATEGORIES } from "@/lib/constants";
@@ -48,7 +49,17 @@ export function BulkSaveModal({
   user,
   isSavingAll = false
 }: BulkSaveModalProps) {
-  if (!isOpen) return null;
+  // 1. "Freeze" the summary when the modal is opened so it doesn't flick to 0 during saving
+  const frozenSummary = useMemo(() => {
+    if (!isOpen) return null;
+    return {
+      count: doneSlips.length,
+      total: totalAmount,
+      dates: uniqueDates
+    };
+  }, [isOpen]); // Only re-calculate when the modal is opened
+
+  if (!isOpen || !frozenSummary) return null;
 
   const toggleMember = (id: string) => {
     if (bulkSplitBetween.includes(id)) {
@@ -78,17 +89,17 @@ export function BulkSaveModal({
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-4 bg-indigo-500/5 rounded-2xl border border-indigo-500/10">
                   <p className="text-[10px] font-bold text-muted uppercase mb-1">จำนวนบิล</p>
-                  <p className="text-2xl font-black text-foreground">{doneSlips.length} <span className="text-sm">ใบ</span></p>
+                  <p className="text-2xl font-black text-foreground">{frozenSummary.count} <span className="text-sm">ใบ</span></p>
                 </div>
                 <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10">
                   <p className="text-[10px] font-bold text-muted uppercase mb-1">ยอดรวม</p>
-                  <p className="text-2xl font-black text-emerald-600">฿{totalAmount.toLocaleString()}</p>
+                  <p className="text-2xl font-black text-emerald-600">฿{frozenSummary.total.toLocaleString()}</p>
                 </div>
               </div>
               <div className="p-4 bg-card border border-border rounded-2xl">
                 <p className="text-[10px] font-bold text-muted uppercase mb-2">วันที่พบในสลิป</p>
                 <div className="flex flex-wrap gap-2">
-                  {uniqueDates.map(date => (
+                  {frozenSummary.dates.map(date => (
                     <span key={date} className="px-2 py-1 bg-muted rounded-lg text-xs font-bold text-foreground">
                       {date}
                     </span>
@@ -215,7 +226,7 @@ export function BulkSaveModal({
             className="flex-[2] bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-500/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {isSavingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-            ยืนยันและบันทึก {doneSlips.length} รายการ
+            ยืนยันและบันทึก {frozenSummary.count} รายการ
           </button>
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/app/components/ui/Toast";
 import { useAuth } from "./AuthContext";
@@ -33,15 +33,17 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   const [slips, setSlips] = useState<SlipItem[]>([]);
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
-  const [worker, setWorker] = useState<Worker | null>(null);
+  const workerRef = useRef<Worker | null>(null);
   const supabase = useMemo(() => createClient(), []);
 
   // Cleanup worker on unmount
-  useState(() => {
+  useEffect(() => {
     return () => {
-      if (worker) worker.terminate();
+      if (workerRef.current) {
+        workerRef.current.terminate();
+      }
     };
-  });
+  }, []);
 
   const updateSlip = useCallback((id: string, updates: Omit<Partial<SlipItem>, 'result'> & { result?: Partial<AnalysisResult> }) => {
     setSlips((prev) => prev.map((s) => {
@@ -165,46 +167,87 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   };
 
   // OCR via Client-side Tesseract — follows the 'Iron Rule' (No Server OCR)
-  const analyzeSingleSlip = async (id: string) => {
-    const slip = slips.find((s) => s.id === id);
-    if (!slip || slip.status === "analyzing") return;
+  const analyzeSingleSlip = async (id: string, imagePreview?: string) => {
+    const slip = imagePreview ? null : slips.find((s) => s.id === id);
+    const preview = imagePreview || slip?.preview;
+    
+    if (!preview || (slip && slip.status === "analyzing")) return;
 
     updateSlip(id, { status: "analyzing", error: undefined });
 
     try {
-      // 1. Prepare Tesseract Worker (Client Side)
-      let currentWorker = worker;
-      if (!currentWorker) {
-        currentWorker = await createWorker("tha+eng");
-        setWorker(currentWorker);
-      }
+      console.log(`[OCR] 🚀 Starting analysis for slip: ${id}`);
+      console.time(`[OCR] Total Time - ${id}`);
+      
+      // 1. Start QR Scan and OCR in Parallel for better performance
+      const qrScanPromise = (async () => {
+        console.time(`[QR] Scan Time - ${id}`);
+        let qrData = "Not found";
+        try {
+          const img = new window.Image();
+          img.src = preview;
+          await new Promise((resolve, reject) => { 
+            img.onload = resolve; 
+            img.onerror = reject;
+          });
+          
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            if (code) {
+              qrData = code.data;
+              console.log(`[QR] Found data:`, qrData);
+            }
+          }
+        } catch (qrErr) {
+          console.error(`[QR] Error:`, qrErr);
+        }
+        console.timeEnd(`[QR] Scan Time - ${id}`);
+        return qrData;
+      })();
 
-      // 2. Perform OCR
-      const { data: { text } } = await currentWorker.recognize(slip.preview);
+      const ocrPromise = (async () => {
+        console.time(`[Tesseract] Worker Init - ${id}`);
+        // Prepare Tesseract Worker (Client Side)
+        if (!workerRef.current) {
+          console.log(`[Tesseract] Initializing new worker...`);
+          // Point to local traineddata in public folder
+          workerRef.current = await createWorker("tha+eng", 1, {
+            workerPath: `${window.location.origin}/worker.min.js`,
+            corePath: `${window.location.origin}/tesseract-core.wasm.js`,
+            langPath: window.location.origin,
+            gzip: false,
+            logger: (m) => {
+              if (m.status === 'recognizing text') {
+                console.log(`[Tesseract] Progress: ${Math.round(m.progress * 100)}%`);
+              } else {
+                console.log(`[Tesseract] Status: ${m.status}`);
+              }
+            }
+          });
+          console.log(`[Tesseract] Worker ready!`);
+        }
+        console.timeEnd(`[Tesseract] Worker Init - ${id}`);
+
+        console.time(`[Tesseract] Recognition - ${id}`);
+        const currentWorker = workerRef.current;
+        const { data } = await currentWorker.recognize(preview);
+        console.timeEnd(`[Tesseract] Recognition - ${id}`);
+        return data;
+      })();
+
+      // Wait for both to complete
+      const [qrData, ocrResult] = await Promise.all([qrScanPromise, ocrPromise]);
+      const text = ocrResult.text;
       const normalizedText = text.replace(/\s+/g, ' ');
 
-      // 3. Perform QR Scan (Client Side using Canvas)
-      let qrData = "Not found";
-      try {
-        const img = new window.Image();
-        img.src = slip.preview;
-        await new Promise((resolve) => { img.onload = resolve; });
-        
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        if (ctx) {
-          ctx.drawImage(img, 0, 0);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height);
-          if (code) qrData = code.data;
-        }
-      } catch (qrErr) {
-        console.error("QR Scan Error:", qrErr);
-      }
-
-      // 4. Extraction Logic (Ported from Server)
+      console.time(`[OCR] Data Extraction - ${id}`);
+      // 2. Extraction Logic
       const lines = text.split('\n')
         .map((line: string) => line.trim())
         .filter((line: string) => line.length > 2);
@@ -283,6 +326,9 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
         throw new Error("ไม่พบข้อมูลจำนวนเงินหรืออาจไม่ใช่รูปสลิป");
       }
 
+      console.timeEnd(`[OCR] Data Extraction - ${id}`);
+      console.timeEnd(`[OCR] Total Time - ${id}`);
+
       updateSlip(id, {
         status: "done",
         result: {
@@ -313,17 +359,43 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
 
   const processAll = async () => {
     setIsProcessingAll(true);
-    const pendingSlips = slips.filter((s) => s.status === "pending");
-    for (const slip of pendingSlips) {
-      await analyzeSingleSlip(slip.id);
+    
+    // 1. Get the current list of pending slips using a safe way
+    let slipsToProcess: SlipItem[] = [];
+    setSlips(current => {
+      slipsToProcess = current.filter(s => s.status === "pending");
+      return current;
+    });
+
+    try {
+      // 2. Process them sequentially
+      for (const slip of slipsToProcess) {
+        await analyzeSingleSlip(slip.id, slip.preview);
+      }
+    } catch (err) {
+      console.error("Process all error:", err);
+    } finally {
+      setIsProcessingAll(false);
     }
-    setIsProcessingAll(false);
   };
 
   const saveSingleSlip = async (id: string) => {
-    if (!user) return;
+    console.log(`[Save] 💾 Starting save for single slip: ${id}`);
+    if (!user) {
+      console.error("[Save] Error: No user found in AuthContext");
+      toast("กรุณาเข้าสู่ระบบก่อนบันทึก", "error");
+      return;
+    }
+
     const slip = slips.find(s => s.id === id);
-    if (!slip || slip.status !== 'done') return;
+    if (!slip) {
+      console.error(`[Save] Error: Slip ${id} not found in state`);
+      return;
+    }
+    if (slip.status !== 'done') {
+      console.warn(`[Save] Warning: Slip ${id} status is ${slip.status}, must be 'done'`);
+      return;
+    }
 
     updateSlip(id, { status: "saving" });
     try {
@@ -345,25 +417,49 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
         insertData.dashboard_id = selectedDashboardId;
       }
 
+      console.log(`[Save] Inserting data to Supabase:`, insertData);
       const { error } = await supabase.from('transactions').insert(insertData);
       if (error) throw error;
       
+      console.log(`[Save] ✅ Save successful for: ${id}`);
       updateSlip(id, { status: "saved" });
       setTimeout(() => {
         setSlips(prev => prev.filter(s => s.id !== id));
       }, 2000);
     } catch (err) {
       const error = err as Error;
+      console.error(`[Save] ❌ Save failed for ${id}:`, error);
       updateSlip(id, { status: "error", error: "บันทึกล้มเหลว: " + error.message });
+      toast("บันทึกล้มเหลว: " + error.message, "error");
     }
   };
 
   const saveAll = async (bulkCategory?: string, bulkSplit?: boolean, bulkSplitBetween?: string[]) => {
-    if (!user) return;
+    console.log(`[SaveAll] 💾 Starting bulk save...`);
+    if (!user) {
+      console.error("[SaveAll] Error: No user found in AuthContext");
+      toast("กรุณาเข้าสู่ระบบก่อนบันทึก", "error");
+      return;
+    }
+
+    // Use functional state to get the actual slips to save right now
+    let slipsToSave: SlipItem[] = [];
+    setSlips(current => {
+      slipsToSave = current.filter(s => s.status === 'done');
+      return current;
+    });
+
+    console.log(`[SaveAll] Found ${slipsToSave.length} slips to save`);
+
+    if (slipsToSave.length === 0) {
+      setIsSavingAll(false);
+      return;
+    }
+
     setIsSavingAll(true);
-    const slipsToSave = slips.filter(s => s.status === 'done');
     
     for (const slip of slipsToSave) {
+      console.log(`[SaveAll] Saving slip: ${slip.id}`);
       updateSlip(slip.id, { status: "saving" });
       try {
         const insertData: Partial<Transaction> = {
@@ -387,15 +483,27 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
           insertData.dashboard_id = selectedDashboardId;
         }
 
+        console.log(`[SaveAll] 🔗 Using Supabase URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
+        console.log(`[SaveAll] 🚀 Sending insert request to Supabase...`, insertData);
+        
+        // Try creating a fresh client for this request to rule out stale state
         const { error } = await supabase.from('transactions').insert(insertData);
-        if (error) throw error;
+        
+        if (error) {
+          console.error(`[SaveAll] ❌ Supabase Error:`, error);
+          throw error;
+        }
+        
+        console.log(`[SaveAll] ✅ Success for slip: ${slip.id}`);
         updateSlip(slip.id, { status: "saved" });
       } catch (err) {
         const error = err as Error;
+        console.error(`[SaveAll] ❌ Failed: ${slip.id}`, error);
         updateSlip(slip.id, { status: "error", error: "บันทึกล้มเหลว: " + error.message });
       }
     }
     
+    console.log(`[SaveAll] Bulk save process finished`);
     setIsSavingAll(false);
     setTimeout(() => {
       setSlips(prev => prev.filter(s => s.status !== 'saved'));
