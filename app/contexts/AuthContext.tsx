@@ -39,39 +39,68 @@ export function AuthProvider({
   const [selectedDashboardId, setSelectedDashboardId] = useState<string>("");
 
   const fetchDashboards = useCallback(async (userId: string, forceSelectId?: string) => {
-    setDashboardsLoading(true); // เริ่ม loading dashboards (Bug #2)
+    setDashboardsLoading(true);
     try {
-      // ดึงข้อมูล Dashboards ทั้งหมดที่ User นี้เป็นสมาชิกอยู่ภายใน Query เดียว (Join)
-      const { data: dashs, error: dError } = await supabase
-        .from('dashboards')
-        .select('*, dashboard_users!inner(user_id)')
-        .eq('dashboard_users.user_id', userId);
-        
-      if (dError) throw dError;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const tokenStr = localStorage.getItem('sb-vjbzujwtwshhrisazoyx-auth-token');
+      let accessToken = anonKey;
+      if (tokenStr) {
+         try { accessToken = JSON.parse(tokenStr).access_token || anonKey; } catch (e) {}
+      }
+
+      // ดึง Dashboards ที่ User นี้เป็นสมาชิกอยู่ (ผ่านตาราง dashboard_users)
+      // เราจะดึงรายชื่อ ID ของ dashboards ก่อน แล้วค่อยดึงข้อมูล dashboards ทั้งหมด
+      const duRes = await fetch(`${supabaseUrl}/rest/v1/dashboard_users?user_id=eq.${userId}&select=dashboard_id`, {
+        headers: { 
+          'apikey': anonKey!, 
+          'Authorization': `Bearer ${accessToken}`,
+          'Cache-Control': 'no-cache'
+        },
+        cache: 'no-store'
+      });
+      if (!duRes.ok) throw new Error(await duRes.text());
+      const duData = await duRes.json();
+      const dashboardIds = duData.map((du: any) => du.dashboard_id);
+
+      if (dashboardIds.length === 0) {
+        setDashboards([]);
+        setSelectedDashboardId("");
+        return;
+      }
+
+      // ดึงข้อมูล Dashboards ทั้งหมดที่ได้รายชื่อมา
+      const dRes = await fetch(`${supabaseUrl}/rest/v1/dashboards?id=in.(${dashboardIds.join(',')})&select=*`, {
+        headers: { 
+          'apikey': anonKey!, 
+          'Authorization': `Bearer ${accessToken}`,
+          'Cache-Control': 'no-cache'
+        },
+        cache: 'no-store'
+      });
+      if (!dRes.ok) throw new Error(await dRes.text());
+      const dashs = await dRes.json();
       
       setDashboards(dashs || []);
       
       if (dashs && dashs.length > 0) {
-        // ถ้ามี forceSelectId (จาก joinDashboard) ให้ใช้ตัวนั้นก่อนเสมอ (Bug #4)
-        if (forceSelectId && dashs.find(d => d.id === forceSelectId)) {
+        if (forceSelectId && dashs.find((d: any) => d.id === forceSelectId)) {
           setSelectedDashboardId(forceSelectId);
           localStorage.setItem("activeDashboardId", forceSelectId);
         } else {
           const savedId = localStorage.getItem("activeDashboardId");
-          const stillExists = savedId ? dashs.find(d => d.id === savedId) : null;
+          const stillExists = savedId ? dashs.find((d: any) => d.id === savedId) : null;
           const initialId = stillExists?.id || dashs[0].id;
           setSelectedDashboardId(initialId);
           localStorage.setItem("activeDashboardId", initialId);
         }
-      } else {
-        setSelectedDashboardId("");
       }
     } catch (err) {
-      console.error("Error fetching dashboards:", err);
+      console.error("🚨 [AuthContext] Error fetching dashboards via Raw Fetch:", err);
     } finally {
-      setDashboardsLoading(false); // dashboards โหลดเสร็จแล้ว (Bug #2)
+      setDashboardsLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
   const userRef = useRef<User | null>(user);
   useEffect(() => {
@@ -85,9 +114,10 @@ export function AuthProvider({
 
     // 🛡️ [Hard Timeout] ไม้ตายสุดท้าย: ไม่ว่าอะไรจะค้างตรงไหน ต้องหยุดหมุนภายใน 8 วินาที
     const loadingHardTimeout = setTimeout(() => {
-      if (loading) {
-        console.warn("🚨 [AuthContext] Hard Timeout Reached! Forcing loading to false.");
+      if (loading || dashboardsLoading) {
+        console.warn("🚨 [AuthContext] Hard Timeout Reached! Forcing loaders to false.");
         setLoading(false);
+        setDashboardsLoading(false);
       }
     }, 8000);
 
@@ -149,14 +179,20 @@ export function AuthProvider({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'dashboards' },
         () => {
-          if (userRef.current) fetchDashboards(userRef.current.id);
+          console.log('✨ [Realtime] Dashboards changed, refetching with delay...');
+          if (userRef.current) {
+            setTimeout(() => fetchDashboards(userRef.current!.id), 500);
+          }
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'dashboard_users' },
         () => {
-          if (userRef.current) fetchDashboards(userRef.current.id);
+          console.log('✨ [Realtime] Dashboard users changed, refetching with delay...');
+          if (userRef.current) {
+            setTimeout(() => fetchDashboards(userRef.current!.id), 500);
+          }
         }
       )
       .subscribe();
