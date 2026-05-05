@@ -149,28 +149,21 @@ export function BottomNav({
       )}
 
       {/* Bottom Nav Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-card/80 backdrop-blur-xl border-t border-border z-[70] px-4 flex items-center justify-between pb-safe">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-card/80 backdrop-blur-xl border-t border-border/50 z-[70] px-4 flex items-center justify-around pb-4">
         {navItems.map((item, i) => {
-          if (item.isAction) {
-            return (
-              <Link 
-                key={i}
-                href={item.href}
-                className="relative -top-6 w-14 h-14 bg-accent rounded-2xl flex items-center justify-center text-white shadow-lg shadow-accent/40 active:scale-95 transition-transform"
-              >
-                <item.icon className="w-7 h-7" />
-              </Link>
-            );
-          }
+          const isActive = item.active || (item.href === "/" && pathname === "/") || (item.href === "/dashboard" && pathname === "/dashboard");
           
           const Content = (
             <div className={cn(
-              "flex flex-col items-center gap-1 transition-all duration-300",
-              item.active ? "text-accent" : "text-muted hover:text-foreground"
+              "flex flex-col items-center gap-1 p-2 transition-all duration-300",
+              isActive ? "text-accent" : "text-muted hover:text-foreground"
             )}>
-              <item.icon className={cn("w-6 h-6", item.active && "animate-pulse")} />
-              <span className="text-[10px] font-bold">{item.label}</span>
-              {item.active && <div className="w-1 h-1 bg-accent rounded-full mt-0.5" />}
+              <div className={cn(
+                "w-12 h-1 rounded-full mb-1 transition-all duration-300",
+                isActive ? "bg-accent" : "bg-transparent"
+              )} />
+              <item.icon className={cn("w-6 h-6", isActive && "animate-pulse")} />
+              <span className="text-[10px] font-black uppercase tracking-wider">{item.label}</span>
             </div>
           );
 

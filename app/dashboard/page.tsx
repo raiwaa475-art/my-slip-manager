@@ -99,14 +99,14 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
-            <div className="lg:col-span-2 xl:col-span-3 glass rounded-3xl p-5 md:p-8 border border-border bg-card/50">
+            <div className="lg:col-span-2 xl:col-span-3 glass rounded-3xl p-5 md:p-8 border border-border bg-white dark:bg-card/50">
               {!Charts ? <ChartLoader /> : dash.activeDashboard?.type !== "split_bill" ? <Charts.CalendarView activeMonth={activeMonth} transactions={tx.transactions} /> : <Charts.GroupContributionChart isMounted={!!Charts} members={guests.members} transactions={tx.transactions} userId={user.id} />}
             </div>
-            {Charts ? <Charts.CategoryPieChart isMounted={!!Charts} data={categoryData} totalExpense={totalExpense} /> : <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-card/50"><ChartLoader /></div>}
+            {Charts ? <Charts.CategoryPieChart isMounted={!!Charts} data={categoryData} totalExpense={totalExpense} /> : <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-white dark:bg-card/50"><ChartLoader /></div>}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {dash.activeDashboard?.type !== "split_bill" ? (Charts ? <Charts.MonthlyTrendChart isMounted={!!Charts} data={trendData} /> : <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-card/50"><ChartLoader height={250} /></div>) : (debt.debts.owes.length > 0 || debt.debts.owed.length > 0) && <DebtSummary debts={debt.debts} onCollect={(d: DebtItem) => { setSelectedDebt(d); setIsRepay(false); setIsPaymentModalOpen(true); }} onRepay={(d: DebtItem) => { setSelectedDebt(d); setIsRepay(true); setIsPaymentModalOpen(true); }} />}
+            {dash.activeDashboard?.type !== "split_bill" ? (Charts ? <Charts.MonthlyTrendChart isMounted={!!Charts} data={trendData} /> : <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-white dark:bg-card/50"><ChartLoader height={250} /></div>) : (debt.debts.allTransfers && debt.debts.allTransfers.length > 0) && <DebtSummary debts={debt.debts} userId={user.id} onCollect={(d: DebtItem) => { setSelectedDebt(d); setIsRepay(false); setIsPaymentModalOpen(true); }} onRepay={(d: DebtItem) => { setSelectedDebt(d); setIsRepay(true); setIsPaymentModalOpen(true); }} />}
             {dash.activeDashboard?.type === "split_bill" && <MembersList {...guests} user={user} activeDashboard={dash.activeDashboard} />}
             <TransactionList transactions={tx.transactions} onEdit={tx.handleEdit} onDelete={tx.deleteTransaction} />
           </div>
@@ -124,6 +124,7 @@ export default function Dashboard() {
         bankName={guests.bankName}
         getTransactionBreakdown={debt.getTransactionBreakdown} 
         setIsSettingsOpen={guests.setIsSettingsOpen} 
+        onSettle={(d) => { tx.settleDebt(d, isRepay); setIsPaymentModalOpen(false); }}
         isRepay={isRepay}
       />
       <SettingsModal 

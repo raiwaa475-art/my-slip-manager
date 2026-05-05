@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, TrendingUp, TrendingDown, Receipt, Users, Plus, PiggyBank } from "lucide-react";
+import { Wallet, TrendingUp, TrendingDown, Receipt, Users, Plus, PiggyBank, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatCard } from "./StatCard";
 import { User } from "../../../types";
@@ -11,48 +11,62 @@ export function DashboardHeader({ dash, tx, user, guests }: {
     setSetupMode: (m: "choose" | "create" | "join" | null) => void 
   }, 
   tx: { 
-    resetForm: (m: { user_id: string }[]) => void, 
+    resetForm: (m: { user_id: string }[], gm: string[]) => void, 
     setIsModalOpen: (o: boolean) => void 
   }, 
   user: User, 
   guests: { 
     members: { user_id: string }[], 
+    guestMembers: string[],
     setIsSettingsOpen: (o: boolean) => void 
   } 
 }) {
   return (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 pb-2">
-      <div className="space-y-1">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl md:text-4xl font-black uppercase tracking-tight text-foreground">
+    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-10 pb-6 border-b border-border/50">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-foreground leading-none">
             {dash.activeDashboard ? dash.activeDashboard.name : "วิเคราะห์การเงิน"}
           </h1>
           {dash.activeDashboard && (
             <span className={cn(
-              "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm",
-              dash.activeDashboard.type === "split_bill" ? "bg-indigo-500/10 text-indigo-500 border-indigo-500/20" : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+              "px-4 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm backdrop-blur-md",
+              dash.activeDashboard.type === "split_bill" ? "bg-accent/10 text-accent border-accent/20" : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
             )}>
-              {dash.activeDashboard.type === "split_bill" ? "Split Bill" : "Personal"}
+              {dash.activeDashboard.type === "split_bill" ? "Split Bill" : "Personal Mode"}
             </span>
           )}
         </div>
-        <p className="text-muted text-sm md:text-lg font-medium">
-          ยินดีต้อนรับกลับมา, <span className="text-foreground font-black underline decoration-accent/30 decoration-4 underline-offset-4">{user.user_metadata?.full_name?.split(' ')[0] || 'User'}</span>
+        <p className="text-muted text-lg md:text-xl font-medium tracking-tight">
+          Welcome back, <span className="text-foreground font-black underline decoration-accent/30 decoration-8 underline-offset-4">{user.user_metadata?.full_name?.split(' ')[0] || 'User'}</span>. Here's your overview.
         </p>
       </div>
       
-      <div className="flex items-center gap-3 w-full md:w-auto">
-        <div className="flex-1 md:flex-none flex items-center gap-2">
-          <button 
-            onClick={() => { tx.resetForm(guests.members); tx.setIsModalOpen(true); }} 
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-3.5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-indigo-500/20 active:scale-95"
-          >
-            <Plus className="w-5 h-5" /> เพิ่มรายการ
+      <div className="flex items-center gap-4 w-full lg:w-auto">
+        <button 
+          onClick={() => { tx.resetForm(guests.members, guests.guestMembers); tx.setIsModalOpen(true); }} 
+          className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-accent hover:bg-accent/90 text-white px-10 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] transition-all shadow-2xl shadow-accent/20 active:scale-95"
+        >
+          <Plus className="w-6 h-6" /> Add Transaction
+        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => dash.setSetupMode("join")} className="p-5 bg-card border border-border/50 rounded-2xl hover:bg-accent/5 hover:border-accent/30 transition-all shadow-sm group">
+            <Users className="w-6 h-6 text-muted group-hover:text-accent transition-colors" />
           </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => dash.setSetupMode("join")} className="p-3.5 bg-card border border-border rounded-2xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors shadow-sm"><Users className="w-5 h-5 text-muted" /></button>
-          {dash.activeDashboard?.type === "split_bill" && <button onClick={() => guests.setIsSettingsOpen(true)} className="p-3.5 bg-card border border-border rounded-2xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-muted hover:text-indigo-500 shadow-sm"><PiggyBank className="w-5 h-5" /></button>}
+          {dash.activeDashboard?.type === "split_bill" && (
+            <>
+              <button 
+                onClick={() => window.open(`/share/${dash.activeDashboard!.id}`, '_blank')}
+                className="p-5 bg-card border border-border/50 rounded-2xl hover:bg-accent/5 hover:border-accent/30 transition-all text-muted hover:text-accent shadow-sm group"
+                title="แชร์สรุปยอดหนี้"
+              >
+                <Share2 className="w-6 h-6 group-hover:scale-110 transition-transform" />
+              </button>
+              <button onClick={() => guests.setIsSettingsOpen(true)} className="p-5 bg-card border border-border/50 rounded-2xl hover:bg-accent/5 hover:border-accent/30 transition-all text-muted hover:text-accent shadow-sm group">
+                <PiggyBank className="w-6 h-6 group-hover:scale-110 transition-transform" />
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -32,6 +32,9 @@ export interface Transaction {
   receiver?: string;
   metadata?: {
     split_between?: string[];
+    settlement?: boolean;
+    debtor_id?: string;
+    creditor_id?: string;
   };
 }
 
@@ -44,6 +47,7 @@ export interface DebtItem {
 export interface DebtSummary {
   owes: DebtItem[];
   owed: DebtItem[];
+  allTransfers?: { from: string, to: string, amount: number }[];
 }
 
 export interface AnalysisResult {

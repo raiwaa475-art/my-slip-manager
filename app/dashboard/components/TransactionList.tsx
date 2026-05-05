@@ -90,39 +90,93 @@ export function TransactionList({ transactions, onEdit, onDelete }: { transactio
   );
 }
 
-export function DebtSummary({ debts, onCollect, onRepay }: { debts: DebtSummaryType, onCollect: (d: DebtItem) => void, onRepay: (d: DebtItem) => void }) {
+export function DebtSummary({ debts, onCollect, onRepay, userId }: { debts: DebtSummaryType, onCollect: (d: DebtItem) => void, onRepay: (d: DebtItem) => void, userId: string }) {
+  const transfers = debts.allTransfers || [];
+  
+  const getDisplayName = (id: string) => {
+    if (id === userId) return "คุณ";
+    if (id.startsWith('guest:')) return id.replace('guest:', '');
+    return `เพื่อนรหัส ${id.substring(0, 6)}`;
+  };
+
+  const getInitials = (id: string) => {
+    const name = getDisplayName(id);
+    return name.substring(0, 2).toUpperCase();
+  };
+
   return (
     <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-card/50">
        <div className="flex items-center gap-2 mb-6"><Users className="w-5 h-5 text-indigo-500" /><h3 className="font-bold text-lg">สรุปยอดหนี้ในกลุ่ม</h3></div>
        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {debts.owed.map((d, i) => (
-            <div key={i} className="flex justify-between items-center p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-600 text-xs font-bold">
-                  {d.userId.startsWith('guest:') ? d.userId.replace('guest:', '')[0].toUpperCase() : d.userId.substring(0, 2).toUpperCase()}
+          {transfers.length > 0 ? transfers.map((t, i) => {
+            const isOwedToMe = t.to === userId;
+            const isOwedByMe = t.from === userId;
+            const involvesMe = isOwedToMe || isOwedByMe;
+
+            return (
+              <div 
+                key={i} 
+                className={cn(
+                  "flex justify-between items-center p-4 rounded-2xl border transition-all",
+                  isOwedToMe ? "bg-emerald-500/5 border-emerald-500/10" : 
+                  isOwedByMe ? "bg-pink-500/5 border-pink-500/10" : 
+                  "bg-black/5 dark:bg-white/5 border-border/50 opacity-70"
+                )}
+              >
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
+                      isOwedToMe ? "bg-emerald-500/20 text-emerald-600" : 
+                      isOwedByMe ? "bg-pink-500/20 text-pink-600" : 
+                      "bg-muted text-muted-foreground"
+                    )}>
+                      {getInitials(t.from)}
+                    </div>
+                    <span className="text-xs font-bold">{getDisplayName(t.from)}</span>
+                    <span className="text-[10px] text-muted font-bold uppercase tracking-widest mx-1">ค้าง</span>
+                    <div className={cn(
+                      "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
+                      isOwedToMe ? "bg-emerald-500/20 text-emerald-600" : 
+                      isOwedByMe ? "bg-pink-500/20 text-pink-600" : 
+                      "bg-muted text-muted-foreground"
+                    )}>
+                      {getInitials(t.to)}
+                    </div>
+                    <span className="text-xs font-bold">{getDisplayName(t.to)}</span>
+                  </div>
                 </div>
-                <span className="text-sm font-medium">{d.userId.startsWith('guest:') ? d.userId.replace('guest:', '') : `เพื่อนรหัส ${d.userId.substring(0, 6)}`}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="font-black text-emerald-600">฿{d.amount.toLocaleString()}</span>
-                <button onClick={() => onCollect(d)} className="px-3 py-1 bg-emerald-600 text-white text-[10px] font-black rounded-lg">เรียกเก็บ</button>
-              </div>
-            </div>
-          ))}
-          {debts.owes.map((d, i) => (
-            <div key={i} className="flex justify-between items-center p-4 rounded-2xl bg-pink-500/5 border border-pink-500/10">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-600 text-xs font-bold">
-                  {d.userId.startsWith('guest:') ? d.userId.replace('guest:', '')[0].toUpperCase() : d.userId.substring(0, 2).toUpperCase()}
+                
+                <div className="flex items-center gap-3">
+                  <span className={cn(
+                    "font-black text-sm",
+                    isOwedToMe ? "text-emerald-600" : isOwedByMe ? "text-pink-600" : "text-foreground/70"
+                  )}>
+                    ฿{t.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  
+                  {isOwedToMe && (
+                    <button 
+                      onClick={() => onCollect({ userId: t.from, amount: t.amount, isGuest: t.from.startsWith('guest:') })} 
+                      className="px-3 py-1 bg-emerald-600 text-white text-[10px] font-black rounded-lg hover:bg-emerald-500 transition-colors"
+                    >
+                      เรียกเก็บ
+                    </button>
+                  )}
+                  {isOwedByMe && (
+                    <button 
+                      onClick={() => onRepay({ userId: t.to, amount: t.amount, isGuest: t.to.startsWith('guest:') })} 
+                      className="px-3 py-1 bg-pink-600 text-white text-[10px] font-black rounded-lg hover:bg-pink-500 transition-colors"
+                    >
+                      ชำระคืน
+                    </button>
+                  )}
                 </div>
-                <span className="text-sm font-medium">{d.userId.startsWith('guest:') ? d.userId.replace('guest:', '') : `เพื่อนรหัส ${d.userId.substring(0, 6)}`}</span>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="font-black text-pink-600">฿{d.amount.toLocaleString()}</span>
-                <button onClick={() => onRepay(d)} className="px-3 py-1 bg-pink-600 text-white text-[10px] font-black rounded-lg">ชำระคืน</button>
-              </div>
-            </div>
-          ))}
+            );
+          }) : (
+            <div className="col-span-full p-8 text-center text-muted italic text-sm">ไม่มีหนี้ค้างในกลุ่ม</div>
+          )}
        </div>
     </div>
   );

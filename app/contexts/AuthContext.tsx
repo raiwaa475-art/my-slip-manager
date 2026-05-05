@@ -158,6 +158,7 @@ export function AuthProvider({
 
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log(`🔐 [Auth] Event: ${event}`);
+      
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setDashboards([]);
@@ -166,10 +167,19 @@ export function AuthProvider({
         return;
       }
 
-      if (session?.user) {
-        setUser(session.user);
-        await fetchDashboards(session.user.id);
+      const currentUser = session?.user || null;
+      
+      // Fix: Only update and fetch if user actually changed or it's a significant event
+      // This prevents the "reload on focus" issue where SIGNED_IN fires multiple times
+      if (currentUser?.id !== userRef.current?.id) {
+        setUser(currentUser);
+        if (currentUser) {
+          await fetchDashboards(currentUser.id);
+        }
         setLoading(false);
+      } else if (event === 'TOKEN_REFRESHED') {
+        // Just update the session in background if needed, but no need to full reload dashboards
+        console.log("🎟️ Token refreshed, session maintained.");
       }
     });
 

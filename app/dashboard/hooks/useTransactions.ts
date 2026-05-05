@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { format, subMonths } from "date-fns";
 import { useAuth } from "@/app/contexts/AuthContext";
-import type { Transaction, User } from "../../../types";
+import type { Transaction, User, DebtItem } from "../../../types";
 import { useToast } from "@/app/components/ui/Toast";
 import { useConfirm } from "@/app/components/ui/ConfirmDialog";
 
@@ -98,13 +98,18 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
 
 
 
-  const resetForm = (members: { user_id: string }[] = []) => {
+  const resetForm = (members: { user_id: string }[] = [], guestMembers: string[] = []) => {
     setNewName("");
     setNewAmount("");
     setNewDate(format(new Date(), "yyyy-MM-dd"));
     setNewCategory("อาหาร");
     setIsSplit(false);
-    setSelectedMemberIds(members.map(m => m.user_id));
+    
+    // Include both real members and guest members in default split
+    const realIds = members.map(m => m.user_id);
+    const guestIds = guestMembers.map(name => `guest:${name}`);
+    setSelectedMemberIds([...realIds, ...guestIds]);
+    
     setEditingTransaction(null);
   };
 
@@ -232,6 +237,59 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
     }
   };
 
+  const settleDebt = async (debt: DebtItem, isRepay: boolean) => {
+    if (!user || !activeDashboardId) return;
+    
+    setIsSaving(true);
+    const amount = debt.amount;
+    const name = isRepay ? `ชำระคืนให้ ${debt.userId.startsWith('guest:') ? debt.userId.replace('guest:', '') : 'เพื่อน'}` : `รับชำระจาก ${debt.userId.startsWith('guest:') ? debt.userId.replace('guest:', '') : 'เพื่อน'}`;
+    
+    const txData: Partial<Transaction> = {
+      user_id: user.id,
+      dashboard_id: activeDashboardId,
+      name,
+      amount: isRepay ? -amount : amount,
+      date: format(new Date(), "yyyy-MM-dd"),
+      category: "อื่นๆ",
+      metadata: {
+        settlement: true,
+        debtor_id: isRepay ? user.id : debt.userId,
+        creditor_id: isRepay ? debt.userId : user.id
+      }
+    };
+
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const tokenStr = localStorage.getItem('sb-vjbzujwtwshhrisazoyx-auth-token');
+      let accessToken = anonKey;
+      if (tokenStr) {
+         try { accessToken = JSON.parse(tokenStr).access_token || anonKey; } catch (e) {}
+      }
+
+      const response = await fetch(`${supabaseUrl}/rest/v1/transactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': anonKey!,
+          'Authorization': `Bearer ${accessToken}`,
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(txData)
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json();
+      setTransactions([data[0], ...transactions]);
+      toast("บันทึกการชำระเงินเรียบร้อย", "success");
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error("Error settling debt:", err);
+      toast("เกิดข้อผิดพลาดในการบันทึก", "error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return {
     transactions,
     setTransactions,
@@ -255,6 +313,7 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
     resetForm,
     handleEdit,
     addTransaction,
-    deleteTransaction
+    deleteTransaction,
+    settleDebt
   };
 }

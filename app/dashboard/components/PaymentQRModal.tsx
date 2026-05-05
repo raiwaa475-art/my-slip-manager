@@ -1,6 +1,6 @@
 "use client";
 
-import { X, Download } from "lucide-react";
+import { X, Download, Check } from "lucide-react";
 import Image from "next/image";
 import { DebtItem } from "../../../types";
 import { useToast } from "@/app/components/ui/Toast";
@@ -16,6 +16,7 @@ interface PaymentQRModalProps {
   bankName: string;
   getTransactionBreakdown: (id: string) => { name: string, amount: number, date: string }[];
   setIsSettingsOpen: (val: boolean) => void;
+  onSettle?: (debt: DebtItem) => void;
   isRepay?: boolean;
 }
 
@@ -61,20 +62,37 @@ export function PaymentQRModal({
                  </div>
                </>
              ) : paymentType === 'bank' && bankAccountNumber ? (
-               <div className="py-8 px-4 flex flex-col items-center gap-4 w-full">
-                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">โอนเข้าบัญชีธนาคาร</p>
-                 <div className="flex flex-col items-center gap-3">
-                   {THAI_BANKS.find(b => b.name === bankName)?.logo && (
-                     <img src={THAI_BANKS.find(b => b.name === bankName)?.logo} alt={bankName} className="w-12 h-12 rounded-xl object-contain shadow-md border border-zinc-100" />
-                   )}
-                   <p className="text-xl font-black text-zinc-800">{bankName}</p>
-                 </div>
-                 <p className="text-2xl font-black text-indigo-600 tracking-wider bg-indigo-50 px-6 py-2 rounded-2xl w-full text-center">{bankAccountNumber}</p>
-                 <div className="mt-4 text-center">
-                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">ยอดที่ต้องโอน</p>
-                    <p className="text-lg font-black text-zinc-800">฿{selectedDebt.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                 </div>
-               </div>
+                <>
+                  <div className="relative w-48 h-48 bg-white p-3 rounded-2xl shadow-sm border border-zinc-100 flex items-center justify-center">
+                    <Image 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?data=${bankAccountNumber}&size=300x300`} 
+                      alt="Bank QR" 
+                      width={180}
+                      height={180}
+                      unoptimized
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="bg-white p-0.5 rounded-lg shadow-sm border border-zinc-50">
+                        {THAI_BANKS.find(b => b.name === bankName)?.logo ? (
+                          <img src={THAI_BANKS.find(b => b.name === bankName)?.logo} alt={bankName} className="w-6 h-6 rounded-md object-contain" />
+                        ) : (
+                          <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center text-white text-[8px] font-black uppercase">BK</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-center w-full space-y-3">
+                    <div className="flex flex-col items-center gap-1">
+                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">โอนเข้าบัญชีธนาคาร</p>
+                      <p className="text-sm font-black text-zinc-800">{bankName}</p>
+                    </div>
+                    <p className="text-2xl font-black text-indigo-600 tracking-wider bg-indigo-50 px-6 py-2 rounded-2xl w-full text-center">{bankAccountNumber}</p>
+                    <div className="pt-2">
+                       <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">ยอดที่ต้องโอน</p>
+                       <p className="text-xl font-black text-zinc-800">฿{selectedDebt.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
+                </>
              ) : (
                <div className="py-12 px-6 text-center text-zinc-400 italic text-sm">
                   <p>ยังไม่ได้ตั้งค่าข้อมูลการรับเงิน</p>

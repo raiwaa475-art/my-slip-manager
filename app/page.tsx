@@ -20,6 +20,8 @@ import { useToast } from "./components/ui/Toast";
 import { SlipRow } from "@/app/components/SlipRow";
 import { SplitSettingsModal } from "@/app/components/SplitSettingsModal";
 import { BulkSaveModal } from "@/app/components/BulkSaveModal";
+import { DashboardSidebar } from "./dashboard/components/DashboardSidebar";
+import { BottomNav } from "./dashboard/components/BottomNav";
 
 import { useAuth } from "./contexts/AuthContext";
 import { useSlips } from "./contexts/SlipContext";
@@ -177,21 +179,46 @@ function HomeContent() {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen bg-background text-foreground transition-colors items-center justify-center p-6">
-        <div className="max-w-md w-full glass rounded-[2.5rem] p-10 md:p-12 border border-border bg-card/50 flex flex-col items-center text-center gap-8 shadow-2xl">
-          <div className="w-20 h-20 rounded-3xl bg-accent flex items-center justify-center text-white shadow-xl shadow-accent/20">
-            <Wallet className="w-10 h-10" />
+      <div className="flex min-h-screen mesh-gradient text-foreground transition-colors items-center justify-center p-4 md:p-6 overflow-hidden relative">
+        {/* Decorative Blobs */}
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-accent/20 dark:bg-accent/10 rounded-full blur-[120px] animate-pulse-soft" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500/20 dark:bg-purple-500/10 rounded-full blur-[120px] animate-pulse-soft" style={{ animationDelay: '2s' }} />
+        
+        <div className="max-w-md w-full glass-card rounded-[3rem] p-8 md:p-12 flex flex-col items-center text-center gap-10 shadow-2xl relative z-10 animate-float">
+          <div className="relative">
+             <div className="absolute inset-0 bg-accent/20 blur-2xl rounded-full" />
+             <div className="w-24 h-24 rounded-[2rem] gradient-bg flex items-center justify-center text-white shadow-2xl relative">
+               <Wallet className="w-12 h-12" />
+             </div>
           </div>
-          <div className="space-y-3">
-            <h1 className="text-3xl font-black tracking-tight uppercase">FINANCE.AI</h1>
-            <p className="text-muted text-sm leading-relaxed">
-              จัดการทุกสลิปการโอนของคุณด้วย AI อัจฉริยะ <br />
-              เข้าสู่ระบบเพื่อเริ่มบันทึกข้อมูลและดูแดชบอร์ด
-            </p>
+          
+          <div className="space-y-4">
+            <h1 className="text-4xl md:text-5xl font-black tracking-tight uppercase gradient-text">FINANCE.AI</h1>
+            <div className="space-y-2">
+              <p className="text-foreground font-bold text-lg">Smart Slip Management</p>
+              <p className="text-muted text-sm leading-relaxed max-w-[280px] mx-auto">
+                จัดการทุกสลิปการโอนของคุณด้วย AI อัจฉริยะ <br />
+                บันทึก สรุป และวิเคราะห์ในที่เดียว
+              </p>
+            </div>
           </div>
-          <LoginButton />
-          <div className="pt-4 border-t border-border w-full">
-            <ThemeToggle />
+          
+          <div className="w-full space-y-6">
+            <LoginButton />
+            
+            <div className="flex items-center gap-4 py-2">
+              <div className="h-[1px] flex-1 bg-border" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted">Customize Theme</span>
+              <div className="h-[1px] flex-1 bg-border" />
+            </div>
+            
+            <div className="flex justify-center">
+              <ThemeToggle />
+            </div>
+          </div>
+
+          <div className="pt-2 text-[10px] font-black text-muted uppercase tracking-widest">
+            Trusted by modern spenders
           </div>
         </div>
       </div>
@@ -200,129 +227,79 @@ function HomeContent() {
 
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors">
-      <aside className="hidden md:flex w-64 border-r border-border flex-col p-6 gap-8 bg-card sticky top-0 h-screen">
-        <div className="flex items-center gap-3">
-           <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center relative">
-              <Image src="/logo.png" alt="Logo" fill className="object-cover" sizes="40px" />
-           </div>
-           <span className="font-black text-xl tracking-tighter text-foreground">FINANCE.AI</span>
-        </div>
+      <DashboardSidebar 
+        user={user} 
+        dashboards={dashboards} 
+        activeDashboard={dashboards.find(d => d.id === selectedDashboardId) || null} 
+        setActiveDashboard={(d) => setSelectedDashboardId(d.id)} 
+        setSetupMode={() => {}} // Home page doesn't need setup mode logic here
+        handleDeleteDashboard={() => {}} 
+        handleLeaveDashboard={() => {}} 
+      />
 
-        <nav className="flex-1 flex flex-col gap-2 w-full">
-           <Link href="/" className="flex items-center gap-4 p-3 rounded-xl bg-accent/10 text-accent border border-accent/20 transition-all">
-              <Scan className="w-6 h-6" />
-              <span className="font-bold">สแกนสลิป</span>
-           </Link>
-           <Link href="/dashboard" className="flex items-center gap-4 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-muted hover:text-foreground transition-all">
-              <LayoutDashboard className="w-6 h-6" />
-              <span className="font-medium">แดชบอร์ด</span>
-           </Link>
-        </nav>
-        
-        <div className="space-y-4 pt-6 border-t border-border">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center overflow-hidden border border-indigo-500/20 relative">
-              {user.user_metadata?.avatar_url ? (
-                <Image src={user.user_metadata.avatar_url} alt="avatar" fill className="object-cover" sizes="32px" />
-              ) : (
-                <UserIcon className="w-4 h-4 text-indigo-500" />
-              )}
-            </div>
-            <div className="flex flex-col truncate">
-              <span className="text-xs font-bold truncate">{user.user_metadata?.full_name || user.email}</span>
-              <button onClick={signOut} className="text-[10px] text-muted hover:text-red-500 flex items-center gap-1 font-bold">
-                <LogOut className="w-3 h-3" /> ออกจากระบบ
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            <span className="text-sm font-medium text-muted">เปลี่ยนธีม</span>
-          </div>
-        </div>
-      </aside>
+      <BottomNav 
+        user={user} 
+        dashboards={dashboards} 
+        activeDashboard={dashboards.find(d => d.id === selectedDashboardId) || null} 
+        setActiveDashboard={(d) => setSelectedDashboardId(d.id)} 
+        setSetupMode={() => {}} 
+      />
 
-      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-card border-b border-border z-50 flex items-center justify-between px-4">
-        <div className="flex items-center gap-3">
-           <Link href="/dashboard" className="p-2 -ml-2 text-muted hover:text-foreground">
-              <Plus className="w-6 h-6 rotate-45" />
-           </Link>
-           <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white">
-                 <Wallet className="w-5 h-5" />
-              </div>
-              <span className="font-black text-lg tracking-tighter">FINANCE</span>
-           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <ThemeToggle />
-          <button onClick={signOut} className="text-red-500"><LogOut className="w-5 h-5" /></button>
-        </div>
-      </div>
-
-      <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-card border-t border-border z-50 flex items-center justify-around px-2 pb-4">
-         <div className="flex flex-col items-center gap-1 p-2 text-accent">
-            <Scan className="w-5 h-5" />
-            <span className="text-[10px] font-bold">สแกนสลิป</span>
-         </div>
-         <Link href="/dashboard" className="flex flex-col items-center gap-1 p-2 text-muted hover:text-foreground">
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="text-[10px] font-medium">แดชบอร์ด</span>
-         </Link>
-         <Link href="/dashboard#settings" className="flex flex-col items-center gap-1 p-2 text-muted hover:text-foreground">
-            <PiggyBank className="w-5 h-5" />
-            <span className="text-[10px] font-medium">ตั้งค่า</span>
-         </Link>
-      </div>
-
-      <main className="flex-1 overflow-y-auto pt-16 pb-24 md:pt-0 md:pb-0">
-        <header className="sticky top-0 md:top-auto z-30 bg-background/80 md:bg-transparent backdrop-blur-xl border-b border-border md:border-none px-4 md:px-8 lg:px-12 py-4 md:py-8 lg:py-10">
-          <div className="max-w-[1400px] mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
-                  <h1 className="text-2xl font-black gradient-text uppercase">ระบบสแกนสลิป</h1>
-                  <div className="h-6 w-[1px] bg-border hidden md:block" />
-                  
+      <main className="flex-1 overflow-y-auto pt-16 pb-24 md:pt-0 md:pb-0 relative">
+        <header className="sticky top-0 md:top-auto z-40 bg-background/60 md:bg-transparent backdrop-blur-md px-6 md:px-12 py-6 md:py-12">
+          <div className="max-w-[1400px] mx-auto">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8">
+              <div className="space-y-2">
+                <h1 className="text-3xl md:text-5xl font-black gradient-text tracking-tighter uppercase leading-none">ระบบสแกนสลิป</h1>
+                <div className="flex flex-wrap items-center gap-4 text-sm font-bold text-muted">
                   {dashboards.length > 0 && (
-                    <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-1.5 shadow-sm">
-                      <LayoutDashboard className="w-4 h-4 text-indigo-500" />
+                    <div className="flex items-center gap-2 bg-card/50 border border-border/50 rounded-xl px-3 py-1.5 shadow-sm group hover:border-accent/50 transition-colors">
+                      <LayoutDashboard className="w-4 h-4 text-accent" />
                       <select 
                         value={selectedDashboardId} 
                         onChange={(e) => setSelectedDashboardId(e.target.value)}
-                        className="bg-transparent text-xs font-bold outline-none cursor-pointer text-foreground"
+                        className="bg-transparent text-[11px] font-black uppercase tracking-wider outline-none cursor-pointer text-foreground pr-2"
                       >
                         {dashboards.map(d => (
                           <option key={d.id} value={d.id} className="bg-card text-foreground">
-                            บันทึกลง: {d.name}
+                            {d.name}
                           </option>
                         ))}
                       </select>
                     </div>
                   )}
-
-                  <div className="h-6 w-[1px] bg-border hidden md:block" />
-                  <div className="flex items-center gap-3 text-sm text-muted">
-                     <span className="flex items-center gap-1"><Coins className="w-4 h-4" /> รวมวันนี้: <b className="text-foreground">฿{stats.todayTotal.toLocaleString()}</b></span>
-                     <span className="flex items-center gap-1"><FileText className="w-4 h-4" /> ทั้งหมด: <b className="text-foreground">{slips.length}</b> ใบ</span>
+                  <div className="flex items-center gap-4">
+                     <span className="flex items-center gap-2 py-1 px-3 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                       <Coins className="w-4 h-4" /> 
+                       ฿{stats.todayTotal.toLocaleString()}
+                     </span>
+                     <span className="flex items-center gap-2 py-1 px-3 rounded-lg bg-accent/10 text-accent border border-accent/20">
+                       <FileText className="w-4 h-4" /> 
+                       {slips.length} ใบ
+                     </span>
                   </div>
                 </div>
+              </div>
             
-            <div className="flex items-center gap-3 w-full md:w-auto">
-               <button onClick={addManualSlip} className="flex-1 md:flex-none flex items-center justify-center gap-2 p-2.5 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-all text-foreground font-bold text-sm px-4">
-                  <Plus className="w-4 h-4" /> เพิ่มเอง
-               </button>
-               <button onClick={() => fileInputRef.current?.click()} className="flex-1 md:flex-none flex justify-center p-2.5 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-all text-foreground">
-                  <Upload className="w-5 h-5" />
-               </button>
-               <button onClick={handleProcessAll} disabled={isProcessingAll || slips.length === 0} className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">
-                  {isProcessingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <FastForward className="w-5 h-5" />}
-                  สแกนทั้งหมด
-               </button>
-               {slips.some(s => s.status === 'done') && (
-                 <button onClick={openBulkModal} disabled={isSavingAll} className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20">
-                    {isSavingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                    บันทึกทั้งหมด
+              <div className="flex items-center gap-3 w-full lg:w-auto">
+                 <button onClick={addManualSlip} className="flex-1 md:flex-none flex items-center justify-center gap-2 p-3 rounded-2xl bg-card border border-border/50 hover:border-accent/50 transition-all text-foreground font-black text-xs px-6 uppercase tracking-wider shadow-sm">
+                    <Plus className="w-4 h-4 text-accent" /> เพิ่มเอง
                  </button>
-               )}
+                 <button onClick={() => fileInputRef.current?.click()} className="p-3 rounded-2xl bg-card border border-border/50 hover:border-accent/50 transition-all text-foreground shadow-sm">
+                    <Upload className="w-5 h-5" />
+                 </button>
+                 <div className="h-10 w-[1px] bg-border/50 mx-1 hidden md:block" />
+                 <button onClick={handleProcessAll} disabled={isProcessingAll || slips.length === 0} className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-accent hover:bg-accent/90 text-white disabled:opacity-30 px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-accent/20 active:scale-95">
+                    {isProcessingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <FastForward className="w-5 h-5" />}
+                    สแกนทั้งหมด
+                 </button>
+                 {slips.some(s => s.status === 'done') && (
+                   <button onClick={openBulkModal} disabled={isSavingAll} className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white disabled:opacity-30 px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-emerald-500/20 active:scale-95">
+                      {isSavingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                      บันทึก
+                   </button>
+                 )}
+              </div>
             </div>
           </div>
         </header>
@@ -344,13 +321,27 @@ function HomeContent() {
           )}
 
           {slips.length === 0 ? (
-            <div onClick={() => fileInputRef.current?.click()} className="group mt-12 cursor-pointer glass rounded-[2rem] p-12 md:p-24 border-dashed border-2 border-border flex flex-col items-center gap-6 text-center hover:border-indigo-500/50 transition-all bg-card/50">
-               <div className="p-6 rounded-full bg-indigo-500/10 group-hover:scale-110 transition-transform">
-                  <Upload className="w-12 h-12 text-indigo-500" />
+            <div 
+              onClick={() => fileInputRef.current?.click()} 
+              className="group mt-12 cursor-pointer glass-card rounded-[3rem] p-12 md:p-32 border-2 border-dashed border-accent/20 flex flex-col items-center gap-8 text-center hover:border-accent/50 hover:bg-accent/5 transition-all duration-500 relative overflow-hidden"
+            >
+               {/* Background Decorative Element */}
+               <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-accent/10 transition-colors" />
+               <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/5 rounded-full -ml-32 -mb-32 blur-3xl group-hover:bg-purple-500/10 transition-colors" />
+
+               <div className="w-24 h-24 rounded-3xl bg-accent/10 flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-inner">
+                  <Upload className="w-12 h-12 text-accent" />
                 </div>
-                <div className="space-y-2">
-                  <p className="text-xl md:text-2xl font-bold text-foreground">อัปโหลดสลิปเพื่อเริ่มบันทึก</p>
-                  <p className="text-sm md:text-base text-muted">ลากไฟล์มาวาง หรือคลิกเพื่อเลือกรูปภาพ (สูงสุด 20 รูป)</p>
+                <div className="space-y-4 relative z-10">
+                  <h2 className="text-2xl md:text-4xl font-black text-foreground tracking-tight">อัปโหลดสลิปเพื่อเริ่มบันทึก</h2>
+                  <p className="text-muted text-sm md:text-lg max-w-md mx-auto leading-relaxed">
+                    ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกรูปภาพสลิป <br />
+                    <span className="text-accent/60 font-bold">(รองรับสูงสุด 20 รูปต่อครั้ง)</span>
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-3 px-6 py-3 rounded-full bg-accent text-white font-black text-sm shadow-xl shadow-accent/30 group-hover:shadow-accent/50 transition-all">
+                  <Plus className="w-5 h-5" /> เลือกไฟล์สลิป
                 </div>
             </div>
           ) : (
