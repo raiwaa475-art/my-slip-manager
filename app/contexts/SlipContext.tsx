@@ -13,6 +13,8 @@ interface SlipContextType {
   slips: SlipItem[];
   setSlips: React.Dispatch<React.SetStateAction<SlipItem[]>>;
   isProcessingAll: boolean;
+  processingProgress: number;
+  estimatedSecondsLeft: number;
   isSavingAll: boolean;
   addManualSlip: () => void;
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
@@ -33,6 +35,8 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const [slips, setSlips] = useState<SlipItem[]>([]);
   const [isProcessingAll, setIsProcessingAll] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [estimatedSecondsLeft, setEstimatedSecondsLeft] = useState(0);
   const [isSavingAll, setIsSavingAll] = useState(false);
   const workerRef = useRef<Worker | null>(null);
   const slipsRef = useRef<SlipItem[]>([]); // ref เพื่อให้ processAll/saveAll เข้าถึง slips ปัจจุบันได้เสมอ
@@ -405,15 +409,33 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
     }
 
     setIsProcessingAll(true);
+    setProcessingProgress(0);
     try {
       // ใช้ sequential สำหรับ OCR เพราะ Tesseract worker ทำงานทีละอัน
+      let processedCount = 0;
+      const startTime = Date.now();
+      
       for (const slip of slipsToProcess) {
+        const slipStartTime = Date.now();
         await analyzeSingleSlip(slip.id, slip.preview);
+        processedCount++;
+        
+        const now = Date.now();
+        const elapsed = now - startTime;
+        const avgTimePerSlip = elapsed / processedCount;
+        const remaining = slipsToProcess.length - processedCount;
+        const estimatedRemainingMs = avgTimePerSlip * remaining;
+        
+        setProcessingProgress(Math.round((processedCount / slipsToProcess.length) * 100));
+        setEstimatedSecondsLeft(Math.ceil(estimatedRemainingMs / 1000));
       }
     } catch (err) {
       console.error("Process all error:", err);
     } finally {
       setIsProcessingAll(false);
+      setEstimatedSecondsLeft(0);
+      // Don't reset progress immediately so the UI can show 100% for a moment
+      setTimeout(() => setProcessingProgress(0), 1000);
     }
   };
 
@@ -628,6 +650,8 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
     slips,
     setSlips,
     isProcessingAll,
+    processingProgress,
+    estimatedSecondsLeft,
     isSavingAll,
     addManualSlip,
     handleFileUpload,
