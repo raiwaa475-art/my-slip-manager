@@ -31,30 +31,38 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
   const fetchTransactions = useCallback(async (dashboardId: string) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('dashboard_id', dashboardId)
-        .order('date', { ascending: false })
-        .limit(500);
-
-      if (error) {
-        console.error(`❌ [fetchTransactions] Error for dashboard ${dashboardId}:`, {
-          message: error.message,
-          code: error.code,
-          hint: error.hint,
-          details: error.details
-        });
-        throw error;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const tokenStr = localStorage.getItem('sb-vjbzujwtwshhrisazoyx-auth-token');
+      let accessToken = anonKey;
+      if (tokenStr) {
+         try { accessToken = JSON.parse(tokenStr).access_token || anonKey; } catch (e) {}
       }
-      console.log(`✅ [fetchTransactions] Loaded ${data?.length ?? 0} transactions for dashboard ${dashboardId}`);
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/transactions?dashboard_id=eq.${dashboardId}&select=*&order=date.desc`,
+        {
+          headers: {
+            'apikey': anonKey!,
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText);
+      }
+
+      const data = await response.json();
+      console.log(`✅ [fetchTransactions] Loaded ${data?.length ?? 0} transactions via Raw Fetch`);
       setTransactions(data || []);
     } catch (err) {
       console.error("Error fetching transactions:", err);
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
 
   useEffect(() => {
@@ -186,26 +194,17 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
     setIsSaving(true);
     const amount = parseFloat(newAmount);
 
-    // Validation
     if (isNaN(amount) || amount <= 0) {
       toast("กรุณาระบุจำนวนเงินที่ถูกต้อง", "error");
       setIsSaving(false);
       return;
     }
 
-    if (amount > 100_000_000) {
-      toast("จำนวนเงินสูงเกินไป (สูงสุด 100 ล้าน)", "error");
-      setIsSaving(false);
-      return;
-    }
-
-    const finalAmount = amount;
-    
     const txData: Partial<Transaction> = {
       user_id: user.id,
       name: isSplit ? `${newName} (หาร ${selectedMemberIds.length} คน)` : newName,
       date: newDate,
-      amount: newCategory === "รายรับ" ? Math.abs(finalAmount) : -Math.abs(finalAmount),
+      amount: newCategory === "รายรับ" ? Math.abs(amount) : -Math.abs(amount),
       category: newCategory,
       receiver: newName,
       metadata: isSplit ? { split_between: selectedMemberIds } : undefined,
@@ -213,21 +212,42 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
     };
 
     try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const tokenStr = localStorage.getItem('sb-vjbzujwtwshhrisazoyx-auth-token');
+      let accessToken = anonKey;
+      if (tokenStr) {
+         try { accessToken = JSON.parse(tokenStr).access_token || anonKey; } catch (e) {}
+      }
+
       if (editingTransaction) {
-        const { error } = await supabase
-          .from('transactions')
-          .update(txData)
-          .eq('id', editingTransaction.id);
-        if (error) throw error;
-        setTransactions(transactions.map(t => t.id === editingTransaction.id ? { ...t, ...txData } : t));
+        const response = await fetch(`${supabaseUrl}/rest/v1/transactions?id=eq.${editingTransaction.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': anonKey!,
+            'Authorization': `Bearer ${accessToken}`,
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(txData)
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        setTransactions(transactions.map(t => t.id === editingTransaction.id ? data[0] : t));
       } else {
-        const { data, error } = await supabase
-          .from('transactions')
-          .insert(txData)
-          .select()
-          .single();
-        if (error) throw error;
-        setTransactions([data, ...transactions]);
+        const response = await fetch(`${supabaseUrl}/rest/v1/transactions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': anonKey!,
+            'Authorization': `Bearer ${accessToken}`,
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(txData)
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        setTransactions([data[0], ...transactions]);
       }
       
       setIsModalOpen(false);
@@ -251,8 +271,22 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
     
     if (!isConfirmed) return;
     try {
-      const { error } = await supabase.from('transactions').delete().eq('id', id);
-      if (error) throw error;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const tokenStr = localStorage.getItem('sb-vjbzujwtwshhrisazoyx-auth-token');
+      let accessToken = anonKey;
+      if (tokenStr) {
+         try { accessToken = JSON.parse(tokenStr).access_token || anonKey; } catch (e) {}
+      }
+
+      const response = await fetch(`${supabaseUrl}/rest/v1/transactions?id=eq.${id}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': anonKey!,
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      if (!response.ok) throw new Error(await response.text());
       setTransactions(transactions.filter(t => t.id !== id));
     } catch (err) {
       console.error("Error deleting transaction:", err);

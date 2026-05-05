@@ -11,15 +11,15 @@ import Link from "next/link";
 import Image from "next/image";
 import { ThemeToggle } from "./components/ui/ThemeToggle";
 import { createClient } from "@/lib/supabase/client";
-import LoginButton from "./components/LoginButton";
+import LoginButton from "@/app/components/LoginButton";
 import { CATEGORIES } from "@/lib/constants";
 import { useToast } from "./components/ui/Toast";
 
 
 // Import Refactored Components
-import { SlipRow } from "./components/SlipRow";
-import { SplitSettingsModal } from "./components/SplitSettingsModal";
-import { BulkSaveModal } from "./components/BulkSaveModal";
+import { SlipRow } from "@/app/components/SlipRow";
+import { SplitSettingsModal } from "@/app/components/SplitSettingsModal";
+import { BulkSaveModal } from "@/app/components/BulkSaveModal";
 
 import { useAuth } from "./contexts/AuthContext";
 import { useSlips } from "./contexts/SlipContext";
@@ -55,16 +55,28 @@ function HomeContent() {
 
   const fetchMembers = useCallback(async (dashboardId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('dashboard_users')
-        .select('user_id')
-        .eq('dashboard_id', dashboardId);
-      if (error) throw error;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const tokenStr = localStorage.getItem('sb-vjbzujwtwshhrisazoyx-auth-token');
+      let accessToken = anonKey;
+      if (tokenStr) {
+         try { accessToken = JSON.parse(tokenStr).access_token || anonKey; } catch (e) {}
+      }
+
+      const response = await fetch(`${supabaseUrl}/rest/v1/dashboard_users?dashboard_id=eq.${dashboardId}&select=user_id`, {
+        headers: {
+          'apikey': anonKey!,
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json();
       setMembers(data || []);
     } catch (err) {
       console.error("Error fetching members:", err);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     if (selectedDashboardId) {

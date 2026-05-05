@@ -49,6 +49,7 @@ export default function Dashboard() {
   const [activeMonth] = useState(new Date());
   const [selectedDebt, setSelectedDebt] = useState<DebtItem | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isRepay, setIsRepay] = useState(false);
   const Charts = useLazyCharts();
 
   const dash = useDashboard(user);
@@ -80,7 +81,7 @@ export default function Dashboard() {
   }, [tx.transactions]);
 
   if (dash.loading || authLoading) return <div className="flex min-h-screen bg-background items-center justify-center"><Loader2 className="w-12 h-12 text-accent animate-spin" /></div>;
-  if (!user) return <LoginRequiredView />;
+  if (!user) return null; // ระบบ No-Auth: user จะถูกสร้างอัตโนมัติเสมอ
   if (dash.setupMode) return <SetupDashboardView dash={dash} />;
 
   return (
@@ -105,7 +106,7 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {dash.activeDashboard?.type !== "split_bill" ? (Charts ? <Charts.MonthlyTrendChart isMounted={!!Charts} data={trendData} /> : <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-card/50"><ChartLoader height={250} /></div>) : (debt.debts.owes.length > 0 || debt.debts.owed.length > 0) && <DebtSummary debts={debt.debts} onCollect={(d: DebtItem) => { setSelectedDebt(d); setIsPaymentModalOpen(true); }} />}
+            {dash.activeDashboard?.type !== "split_bill" ? (Charts ? <Charts.MonthlyTrendChart isMounted={!!Charts} data={trendData} /> : <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-card/50"><ChartLoader height={250} /></div>) : (debt.debts.owes.length > 0 || debt.debts.owed.length > 0) && <DebtSummary debts={debt.debts} onCollect={(d: DebtItem) => { setSelectedDebt(d); setIsRepay(false); setIsPaymentModalOpen(true); }} onRepay={(d: DebtItem) => { setSelectedDebt(d); setIsRepay(true); setIsPaymentModalOpen(true); }} />}
             {dash.activeDashboard?.type === "split_bill" && <MembersList {...guests} user={user} activeDashboard={dash.activeDashboard} />}
             <TransactionList transactions={tx.transactions} onEdit={tx.handleEdit} onDelete={tx.deleteTransaction} />
           </div>
@@ -123,6 +124,7 @@ export default function Dashboard() {
         bankName={guests.bankName}
         getTransactionBreakdown={debt.getTransactionBreakdown} 
         setIsSettingsOpen={guests.setIsSettingsOpen} 
+        isRepay={isRepay}
       />
       <SettingsModal 
         isOpen={guests.isSettingsOpen} 

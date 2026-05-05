@@ -544,14 +544,48 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
 
         console.log(`[SaveAll] 🚀 Sending insert for slip ${slip.id} to dashboard: ${currentDashboardId || 'personal'}`, insertData);
         
-        const { data, error } = await authSupabase.from('transactions').insert(insertData).select();
+        try {
+          // 🚀 ใช้ Fetch ยิงตรงเข้าฐานข้อมูลเลย เพื่อข้ามระบบ Auth Session ของ Supabase ที่ค้าง
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+          
+          // ดึง Token ดิบๆ จากบราวเซอร์ (ถ้ามี) เพื่อให้บันทึกผ่านระบบความปลอดภัยได้
+          const tokenStr = localStorage.getItem('sb-vjbzujwtwshhrisazoyx-auth-token');
+          let accessToken = anonKey;
+          if (tokenStr) {
+             try { accessToken = JSON.parse(tokenStr).access_token || anonKey; } catch (e) {}
+          }
 
-        if (error) {
-          console.error(`[SaveAll] ❌ Supabase Error for ${slip.id}:`, error);
-          throw error;
+          const insertPromise = fetch(`${supabaseUrl}/rest/v1/transactions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': anonKey!,
+              'Authorization': `Bearer ${accessToken}`,
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify(insertData)
+          });
+
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Supabase Timeout (10 seconds)")), 10000)
+          );
+
+          const response = await Promise.race([insertPromise, timeoutPromise]) as Response;
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[SaveAll] ❌ API Error for ${slip.id}:`, errorText);
+            throw new Error(errorText);
+          }
+          
+          const data = await response.json();
+          console.log(`[SaveAll] ✅ Success for slip: ${slip.id}`, data);
+          return slip.id;
+        } catch (err: any) {
+          console.error(`[SaveAll] 💥 Exception during insert for ${slip.id}:`, err);
+          throw err; // ให้ Promise.allSettled จับ
         }
-        console.log(`[SaveAll] ✅ Success for slip: ${slip.id}`, data);
-        return slip.id;
       })
     );
 

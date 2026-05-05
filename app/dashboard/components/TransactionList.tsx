@@ -90,7 +90,7 @@ export function TransactionList({ transactions, onEdit, onDelete }: { transactio
   );
 }
 
-export function DebtSummary({ debts, onCollect }: { debts: DebtSummaryType, onCollect: (d: DebtItem) => void }) {
+export function DebtSummary({ debts, onCollect, onRepay }: { debts: DebtSummaryType, onCollect: (d: DebtItem) => void, onRepay: (d: DebtItem) => void }) {
   return (
     <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-card/50">
        <div className="flex items-center gap-2 mb-6"><Users className="w-5 h-5 text-indigo-500" /><h3 className="font-bold text-lg">สรุปยอดหนี้ในกลุ่ม</h3></div>
@@ -119,7 +119,7 @@ export function DebtSummary({ debts, onCollect }: { debts: DebtSummaryType, onCo
               </div>
               <div className="flex items-center gap-3">
                 <span className="font-black text-pink-600">฿{d.amount.toLocaleString()}</span>
-                <button className="px-3 py-1 bg-pink-600 text-white text-[10px] font-black rounded-lg">ชำระคืน</button>
+                <button onClick={() => onRepay(d)} className="px-3 py-1 bg-pink-600 text-white text-[10px] font-black rounded-lg">ชำระคืน</button>
               </div>
             </div>
           ))}

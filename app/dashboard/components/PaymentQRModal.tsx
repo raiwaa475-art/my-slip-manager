@@ -16,6 +16,7 @@ interface PaymentQRModalProps {
   bankName: string;
   getTransactionBreakdown: (id: string) => { name: string, amount: number, date: string }[];
   setIsSettingsOpen: (val: boolean) => void;
+  isRepay?: boolean;
 }
 
 export function PaymentQRModal({
@@ -27,7 +28,8 @@ export function PaymentQRModal({
   bankAccountNumber,
   bankName,
   getTransactionBreakdown,
-  setIsSettingsOpen
+  setIsSettingsOpen,
+  isRepay = false
 }: PaymentQRModalProps) {
   const { toast } = useToast();
   if (!isOpen || !selectedDebt) return null;
@@ -38,8 +40,8 @@ export function PaymentQRModal({
           <button onClick={onClose} className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors"><X className="w-6 h-6 text-muted" /></button>
           
           <div className="text-center mb-6">
-            <h2 className="text-2xl font-black uppercase mb-1">เรียกเก็บเงิน</h2>
-            <p className="text-sm text-muted">จาก {selectedDebt.userId.startsWith('guest:') ? selectedDebt.userId.replace('guest:', '') : `เพื่อน (${selectedDebt.userId.substring(0, 4)})`}</p>
+            <h2 className="text-2xl font-black uppercase mb-1">{isRepay ? "ชำระเงินคืน" : "เรียกเก็บเงิน"}</h2>
+            <p className="text-sm text-muted">{isRepay ? "ให้" : "จาก"} {selectedDebt.userId.startsWith('guest:') ? selectedDebt.userId.replace('guest:', '') : `เพื่อน (${selectedDebt.userId.substring(0, 4)})`}</p>
           </div>
 
           <div className="bg-white p-6 rounded-3xl flex flex-col items-center gap-4 shadow-inner mb-6">

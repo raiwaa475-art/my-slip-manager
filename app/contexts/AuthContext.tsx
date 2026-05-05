@@ -83,6 +83,14 @@ export function AuthProvider({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    // 🛡️ [Hard Timeout] ไม้ตายสุดท้าย: ไม่ว่าอะไรจะค้างตรงไหน ต้องหยุดหมุนภายใน 8 วินาที
+    const loadingHardTimeout = setTimeout(() => {
+      if (loading) {
+        console.warn("🚨 [AuthContext] Hard Timeout Reached! Forcing loading to false.");
+        setLoading(false);
+      }
+    }, 8000);
+
     const init = async () => {
       if (hasFetchedInitial.current) return;
       hasFetchedInitial.current = true;
@@ -92,19 +100,27 @@ export function AuthProvider({
           setUser(initialUser);
           await fetchDashboards(initialUser.id);
         } else {
-          // ใช้ getSession แบบระมัดระวังเพื่อเลี่ยง Lock issue
-          const { data: { session }, error } = await supabase.auth.getSession();
-          if (error) console.warn("Auth Lock/Session Warning:", error.message);
-          
-          if (session?.user) {
-            setUser(session.user);
-            await fetchDashboards(session.user.id);
+          // 🚀 เพิ่ม Timeout ให้การดึง Session
+          const sessionPromise = supabase.auth.getSession();
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Auth Timeout")), 5000)
+          );
+
+          try {
+            const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+            if (session?.user) {
+              setUser(session.user);
+              await fetchDashboards(session.user.id);
+            }
+          } catch (timeoutErr) {
+            console.warn("⚠️ Auth Session Timeout: ระบบข้ามการรอ Session...");
           }
         }
       } catch (err) {
         console.error("Auth Init Error:", err);
       } finally {
         setLoading(false);
+        clearTimeout(loadingHardTimeout); // ยกเลิก Hard Timeout ถ้าโหลดเสร็จก่อน
       }
     };
 
@@ -321,15 +337,33 @@ export function AuthProvider({
   const updateDashboardMetadata = async (dashboardId: string, metadata: Dashboard['metadata']) => {
     if (!user) return;
     try {
-      console.log(`⏳ [AuthContext] Updating metadata for ${dashboardId}...`, metadata);
-      const { error } = await supabase
-        .from('dashboards')
-        .update({ metadata })
-        .eq('id', dashboardId);
+      console.log(`⏳ [AuthContext] Updating metadata for ${dashboardId} via Raw Fetch...`, metadata);
+      
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const tokenStr = localStorage.getItem('sb-vjbzujwtwshhrisazoyx-auth-token');
+      let accessToken = anonKey;
+      if (tokenStr) {
+         try { accessToken = JSON.parse(tokenStr).access_token || anonKey; } catch (e) {}
+      }
 
-      if (error) throw error;
+      const response = await fetch(`${supabaseUrl}/rest/v1/dashboards?id=eq.${dashboardId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': anonKey!,
+          'Authorization': `Bearer ${accessToken}`,
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify({ metadata })
+      });
 
-      console.log("✅ [AuthContext] Metadata updated in DB. Refreshing local state...");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText);
+      }
+
+      console.log("✅ [AuthContext] Metadata updated successfully.");
       
       // อัปเดตข้อมูลใน State ทันทีเพื่อให้ UI เปลี่ยนแปลง
       setDashboards(prev => prev.map(d => 
