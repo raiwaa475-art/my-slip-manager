@@ -8,6 +8,7 @@ import { useToast } from "@/app/components/ui/Toast";
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  dashboardsLoading: boolean; // แยก flag สำหรับ dashboards โดยเฉพาะ (แก้ race condition Bug #2)
   dashboards: Dashboard[];
   selectedDashboardId: string;
   setSelectedDashboardId: (id: string) => void;
@@ -33,10 +34,12 @@ export function AuthProvider({
   const supabase = useMemo(() => createClient(), []);
   const [user, setUser] = useState<User | null>(initialUser);
   const [loading, setLoading] = useState(!initialUser);
+  const [dashboardsLoading, setDashboardsLoading] = useState(true); // แยก loading สำหรับ dashboards (Bug #2)
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [selectedDashboardId, setSelectedDashboardId] = useState<string>("");
 
-  const fetchDashboards = useCallback(async (userId: string) => {
+  const fetchDashboards = useCallback(async (userId: string, forceSelectId?: string) => {
+    setDashboardsLoading(true); // เริ่ม loading dashboards (Bug #2)
     try {
       // ดึงข้อมูล Dashboards ทั้งหมดที่ User นี้เป็นสมาชิกอยู่ภายใน Query เดียว (Join)
       const { data: dashs, error: dError } = await supabase
@@ -49,16 +52,24 @@ export function AuthProvider({
       setDashboards(dashs || []);
       
       if (dashs && dashs.length > 0) {
-        const savedId = localStorage.getItem("activeDashboardId");
-        const stillExists = savedId ? dashs.find(d => d.id === savedId) : null;
-        const initialId = stillExists?.id || dashs[0].id;
-        setSelectedDashboardId(initialId);
-        localStorage.setItem("activeDashboardId", initialId);
+        // ถ้ามี forceSelectId (จาก joinDashboard) ให้ใช้ตัวนั้นก่อนเสมอ (Bug #4)
+        if (forceSelectId && dashs.find(d => d.id === forceSelectId)) {
+          setSelectedDashboardId(forceSelectId);
+          localStorage.setItem("activeDashboardId", forceSelectId);
+        } else {
+          const savedId = localStorage.getItem("activeDashboardId");
+          const stillExists = savedId ? dashs.find(d => d.id === savedId) : null;
+          const initialId = stillExists?.id || dashs[0].id;
+          setSelectedDashboardId(initialId);
+          localStorage.setItem("activeDashboardId", initialId);
+        }
       } else {
         setSelectedDashboardId("");
       }
     } catch (err) {
       console.error("Error fetching dashboards:", err);
+    } finally {
+      setDashboardsLoading(false); // dashboards โหลดเสร็จแล้ว (Bug #2)
     }
   }, [supabase]);
 
@@ -193,9 +204,9 @@ export function AuthProvider({
       
       if (insertUserErr && (insertUserErr as unknown as { code: string }).code !== '23505') throw insertUserErr;
 
-      await fetchDashboards(user.id);
-      setSelectedDashboardId(trimmedCode);
-      localStorage.setItem("activeDashboardId", trimmedCode);
+      // Bug #4 Fix: ส่ง forceSelectId เข้า fetchDashboards เพื่อ set selectedId
+      // หลัง dashboards state update เสร็จสมบูรณ์ แทนการ set แยก (ซึ่งเกิด race)
+      await fetchDashboards(user.id, trimmedCode);
     } catch (err) {
       console.error("Error joining dashboard:", err);
       throw err;
@@ -334,14 +345,21 @@ export function AuthProvider({
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // Bug #1 Fix: clear state ก่อน แล้วค่อย signOut และ redirect
+    // ป้องกัน onAuthStateChange emit SIGNED_IN ซ้ำแล้วทำให้ re-mount
+    setUser(null);
+    setDashboards([]);
+    setSelectedDashboardId("");
     localStorage.removeItem("activeDashboardId");
-    window.location.href = "/";
+    await supabase.auth.signOut();
+    // ใช้ replace แทน href เพื่อไม่ให้ back button กลับมาได้
+    window.location.replace("/");
   };
 
   const value = {
     user,
     loading,
+    dashboardsLoading, // export ออกมาให้ useDashboard ใช้แทน authLoading (Bug #2)
     dashboards,
     selectedDashboardId,
     setSelectedDashboardId: handleSetSelectedDashboardId,

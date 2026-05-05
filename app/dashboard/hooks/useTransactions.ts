@@ -31,16 +31,23 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
   const fetchTransactions = useCallback(async (dashboardId: string) => {
     setLoading(true);
     try {
-      const sixMonthsAgo = format(subMonths(new Date(), 6), "yyyy-MM-dd");
-      
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
         .eq('dashboard_id', dashboardId)
         .order('date', { ascending: false })
-        .limit(500); 
+        .limit(500);
 
-      if (error) throw error;
+      if (error) {
+        console.error(`❌ [fetchTransactions] Error for dashboard ${dashboardId}:`, {
+          message: error.message,
+          code: error.code,
+          hint: error.hint,
+          details: error.details
+        });
+        throw error;
+      }
+      console.log(`✅ [fetchTransactions] Loaded ${data?.length ?? 0} transactions for dashboard ${dashboardId}`);
       setTransactions(data || []);
     } catch (err) {
       console.error("Error fetching transactions:", err);
@@ -49,47 +56,60 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
     }
   }, [supabase]);
 
-  useEffect(() => {
-    let subscription: unknown = null;
 
-    const setupSubscription = (dashboardId: string | null) => {
-      const channel = supabase
-        .channel(`transactions-${dashboardId || user?.id}`)
+  useEffect(() => {
+    let isMounted = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const handleRealtimeChange = async (payload: RealtimePostgresChangesPayload<Transaction>) => {
+      if (!isMounted) return;
+      console.log('✨ [Realtime] Change received:', payload.eventType, payload);
+
+      // ถ้า INSERT/UPDATE ให้ refetch ทันทีเพื่อความถูกต้อง (Supabase อาจส่ง payload ไม่ครบถ้าไม่ตั้ง REPLICA IDENTITY FULL)
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        if (activeDashboardId) {
+          console.log('[Realtime] Refetching transactions after change...');
+          await fetchTransactions(activeDashboardId);
+        } else if (user) {
+          // Personal view refetch
+          setLoading(true);
+          const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('date', { ascending: false })
+            .limit(100);
+          if (!error && isMounted) setTransactions(data || []);
+          if (isMounted) setLoading(false);
+        }
+      } else if (payload.eventType === 'DELETE') {
+        // DELETE สามารถใช้ optimistic update ได้เพราะมี old.id เสมอ
+        setTransactions(prev => prev.filter(t => t.id !== payload.old.id));
+      }
+    };
+
+    if (activeDashboardId) {
+      console.log(`📂 [Dashboard] Switching to Dashboard: ${activeDashboardId}`);
+      fetchTransactions(activeDashboardId);
+
+      channel = supabase
+        .channel(`transactions-dash-${activeDashboardId}`)
         .on(
           'postgres_changes',
           {
             event: '*',
             schema: 'public',
             table: 'transactions',
-            filter: dashboardId ? `dashboard_id=eq.${dashboardId}` : `user_id=eq.${user?.id}`
+            filter: `dashboard_id=eq.${activeDashboardId}`
           },
-          (payload: RealtimePostgresChangesPayload<Transaction>) => {
-            console.log('✨ [Realtime] Change received:', payload);
-            if (payload.eventType === 'INSERT') {
-              setTransactions(prev => {
-                if (prev.find(t => t.id === payload.new.id)) return prev;
-                return [payload.new as Transaction, ...prev];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              setTransactions(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
-            } else if (payload.eventType === 'DELETE') {
-              setTransactions(prev => prev.filter(t => t.id !== payload.old.id));
-            }
-          }
+          handleRealtimeChange
         )
         .subscribe((status: string) => {
-          console.log(`📡 [Realtime] Subscription Status for ${dashboardId || 'personal'}:`, status);
+          console.log(`📡 [Realtime] Status for dashboard ${activeDashboardId}:`, status);
         });
-      
-      return channel;
-    };
 
-    if (activeDashboardId) {
-      console.log(`📂 [Dashboard] Switching to Dashboard: ${activeDashboardId}`);
-      fetchTransactions(activeDashboardId);
-      subscription = setupSubscription(activeDashboardId);
     } else if (user) {
-      console.log(`👤 [Dashboard] Switching to Personal View`);
+      console.log(`👤 [Dashboard] Personal view for user: ${user.id}`);
       const fetchUserTransactions = async () => {
         setLoading(true);
         const { data, error } = await supabase
@@ -98,21 +118,36 @@ export function useTransactions(user: User | null, activeDashboardId: string | n
           .eq('user_id', user.id)
           .order('date', { ascending: false })
           .limit(100);
-        
-        if (error) {
-          console.error("❌ [Dashboard] Error fetching personal transactions:", error);
+        if (error) console.error('❌ [Dashboard] Error fetching personal transactions:', error);
+        if (isMounted) {
+          setTransactions(data || []);
+          setLoading(false);
         }
-        setTransactions(data || []);
-        setLoading(false);
       };
       fetchUserTransactions();
-      subscription = setupSubscription(null);
+
+      channel = supabase
+        .channel(`transactions-user-${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'transactions',
+            filter: `user_id=eq.${user.id}`
+          },
+          handleRealtimeChange
+        )
+        .subscribe((status: string) => {
+          console.log(`📡 [Realtime] Status for user ${user.id}:`, status);
+        });
     }
 
     return () => {
-      if (subscription) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        supabase.removeChannel(subscription as any);
+      isMounted = false;
+      if (channel) {
+        console.log('[Realtime] Cleaning up channel...');
+        supabase.removeChannel(channel);
       }
     };
   }, [activeDashboardId, user, fetchTransactions, supabase]);

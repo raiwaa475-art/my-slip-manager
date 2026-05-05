@@ -16,6 +16,7 @@ export function useDashboard(user: User | null) {
     selectedDashboardId, 
     setSelectedDashboardId, 
     loading: authLoading,
+    dashboardsLoading, // Bug #2 Fix: ใช้ dashboardsLoading แทน authLoading ในการตัดสินใจ setupMode
     createDashboard: ctxCreateDashboard,
     joinDashboard: ctxJoinDashboard,
     leaveDashboard: ctxLeaveDashboard,
@@ -35,12 +36,15 @@ export function useDashboard(user: User | null) {
   const activeDashIdRef = useRef<string | null>(selectedDashboardId);
 
   useEffect(() => {
-    if (dashboards.length === 0 && !authLoading) {
+    // Bug #2 Fix: ใช้ dashboardsLoading แทน authLoading
+    // dashboardsLoading = false หมายความว่า fetchDashboards เสร็จแล้วจริงๆ (ไม่ใช่แค่ auth loading)
+    if (dashboardsLoading) return;
+    if (dashboards.length === 0) {
       setSetupMode("choose");
-    } else if (dashboards.length > 0) {
+    } else {
       setSetupMode(null);
     }
-  }, [dashboards.length, authLoading]);
+  }, [dashboards.length, dashboardsLoading]);
 
   const handleCreateDashboard = async () => {
     if (!newDashboardName.trim()) return;
@@ -136,7 +140,7 @@ export function useDashboard(user: User | null) {
     joinCode,
     setJoinCode,
     isProcessingSetup,
-    loading: authLoading,
+    loading: authLoading || dashboardsLoading, // รวมทั้ง authLoading และ dashboardsLoading
     handleCreateDashboard,
     handleJoinDashboard,
     handleLeaveDashboard,

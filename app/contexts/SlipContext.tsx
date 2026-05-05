@@ -35,6 +35,19 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
   const workerRef = useRef<Worker | null>(null);
+  const slipsRef = useRef<SlipItem[]>([]); // ref เพื่อให้ processAll/saveAll เข้าถึง slips ปัจจุบันได้เสมอ
+  // ผน stale closure bug: selectedDashboardId ใน closure ของ saveAll อาจเป็นค่าเก่า
+  // ใช้ ref แทนเพื่อให้ได้ค่าล่าสุดเสมอตอน save
+  const selectedDashboardIdRef = useRef<string>(selectedDashboardId);
+  useEffect(() => {
+    selectedDashboardIdRef.current = selectedDashboardId;
+    console.log(`[SlipContext] selectedDashboardId updated: ${selectedDashboardId}`);
+  }, [selectedDashboardId]);
+
+  const userRef = useRef<typeof user>(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   // Cleanup worker on unmount
   useEffect(() => {
@@ -46,22 +59,26 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateSlip = useCallback((id: string, updates: Omit<Partial<SlipItem>, 'result'> & { result?: Partial<AnalysisResult> }) => {
-    setSlips((prev) => prev.map((s) => {
-      if (s.id !== id) return s;
-      
-      const newSlip = { ...s };
-      if (updates.result) {
-        newSlip.result = { ...s.result, ...updates.result };
-      }
-      
-      Object.entries(updates).forEach(([key, value]) => {
-        if (key !== 'result') {
-          (newSlip as unknown as Record<string, unknown>)[key] = value;
+    setSlips((prev) => {
+      const next = prev.map((s) => {
+        if (s.id !== id) return s;
+        
+        const newSlip = { ...s };
+        if (updates.result) {
+          newSlip.result = { ...s.result, ...updates.result };
         }
+        
+        Object.entries(updates).forEach(([key, value]) => {
+          if (key !== 'result') {
+            (newSlip as unknown as Record<string, unknown>)[key] = value;
+          }
+        });
+        
+        return newSlip;
       });
-      
-      return newSlip;
-    }));
+      slipsRef.current = next; // Bug #5 Fix: sync ref ทุกครั้งที่ state เปลี่ยน
+      return next;
+    });
   }, []);
 
   const addManualSlip = useCallback(() => {
@@ -79,7 +96,11 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
         confidence: 1
       }
     };
-    setSlips((prev) => [newSlip, ...prev]);
+    setSlips((prev) => {
+      const next = [newSlip, ...prev];
+      slipsRef.current = next;
+      return next;
+    });
   }, []);
 
   const resizeImage = (file: File): Promise<string> => {
@@ -145,7 +166,11 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
             confidence: 0
           }
         };
-        setSlips((prev) => [...prev, newSlip]);
+        setSlips((prev) => {
+          const next = [...prev, newSlip];
+          slipsRef.current = next;
+          return next;
+        });
       } catch (err) {
         console.error("Error processing file:", file.name, err);
       }
@@ -154,16 +179,28 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   };
 
   const toggleSelect = (id: string) => {
-    setSlips(prev => prev.map(s => s.id === id ? { ...s, selected: !s.selected } : s));
+    setSlips(prev => {
+      const next = prev.map(s => s.id === id ? { ...s, selected: !s.selected } : s);
+      slipsRef.current = next;
+      return next;
+    });
   };
 
   const selectAll = () => {
-    const allSelected = slips.every(s => s.selected);
-    setSlips(prev => prev.map(s => ({ ...s, selected: !allSelected })));
+    const allSelected = slipsRef.current.every(s => s.selected);
+    setSlips(prev => {
+      const next = prev.map(s => ({ ...s, selected: !allSelected }));
+      slipsRef.current = next;
+      return next;
+    });
   };
 
   const removeSelected = () => {
-    setSlips(prev => prev.filter(s => !s.selected));
+    setSlips(prev => {
+      const next = prev.filter(s => !s.selected);
+      slipsRef.current = next;
+      return next;
+    });
   };
 
   // OCR via Client-side Tesseract — follows the 'Iron Rule' (No Server OCR)
@@ -358,17 +395,18 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   };
 
   const processAll = async () => {
-    setIsProcessingAll(true);
-    
-    // 1. Get the current list of pending slips using a safe way
-    let slipsToProcess: SlipItem[] = [];
-    setSlips(current => {
-      slipsToProcess = current.filter(s => s.status === "pending");
-      return current;
-    });
+    // Bug #5 Fix: ดึง slips จาก ref โดยตรง ไม่ใช้ functional setState trick
+    // แก้ปัญหา React 18 batch update ที่ทำให้ slipsToProcess เป็น [] เมื่อ loop เริ่ม
+    const slipsToProcess = slipsRef.current.filter(s => s.status === "pending");
 
+    if (slipsToProcess.length === 0) {
+      toast("ไม่มีสลิปที่รอสแกน", "info");
+      return;
+    }
+
+    setIsProcessingAll(true);
     try {
-      // 2. Process them sequentially
+      // ใช้ sequential สำหรับ OCR เพราะ Tesseract worker ทำงานทีละอัน
       for (const slip of slipsToProcess) {
         await analyzeSingleSlip(slip.id, slip.preview);
       }
@@ -380,27 +418,35 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   };
 
   const saveSingleSlip = async (id: string) => {
+    // ใช้ ref เพื่อป้องกัน stale closure (ค่าจาก context ที่อาจใน snapshot เก่าใน closure)
+    const currentUser = userRef.current;
+    const currentDashboardId = selectedDashboardIdRef.current;
+
     console.log(`[Save] 💾 Starting save for single slip: ${id}`);
-    if (!user) {
+    console.log(`[Save] 📍 Dashboard: ${currentDashboardId || '(none)'}, User: ${currentUser?.id}`);
+
+    if (!currentUser) {
       console.error("[Save] Error: No user found in AuthContext");
       toast("กรุณาเข้าสู่ระบบก่อนบันทึก", "error");
       return;
     }
 
-    const slip = slips.find(s => s.id === id);
+    const slip = slipsRef.current.find(s => s.id === id);
     if (!slip) {
       console.error(`[Save] Error: Slip ${id} not found in state`);
       return;
     }
-    if (slip.status !== 'done') {
-      console.warn(`[Save] Warning: Slip ${id} status is ${slip.status}, must be 'done'`);
+    const canSave = slip.status === 'done' || (slip.status === 'error' && slip.result.amount > 0);
+    if (!canSave) {
+      console.warn(`[Save] Warning: Slip ${id} status is ${slip.status} and amount is ${slip.result.amount}, cannot save`);
+      toast("กรุณาสแกนสลิปก่อนบันทึก", "error");
       return;
     }
 
     updateSlip(id, { status: "saving" });
     try {
       const insertData: Partial<Transaction> = {
-        user_id: user.id,
+        user_id: currentUser.id,
         name: slip.result.receiver || "ไม่ระบุ",
         amount: -Math.abs(Number(slip.result.amount)),
         date: slip.result.date,
@@ -413,16 +459,14 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
         insertData.name = `${slip.result.receiver || "ไม่ระบุ"} (หาร ${slip.result.splitBetween.length} คน)`;
       }
 
-      if (selectedDashboardId) {
-        insertData.dashboard_id = selectedDashboardId;
+      // ใช้ ref เพื่อให้ได้ dashboard ID ล่าสุดเสมอ (stale closure fix)
+      if (currentDashboardId) {
+        insertData.dashboard_id = currentDashboardId;
       }
 
-      console.log(`[Save] 🚀 Sending data to Supabase (Single):`, insertData);
-      
-      console.time(`[Save] Request Duration - ${id}`);
+      console.log(`[Save] 🚀 Sending data to Supabase:`, insertData);
       const { data, error } = await authSupabase.from('transactions').insert(insertData).select();
-      console.timeEnd(`[Save] Request Duration - ${id}`);
-      
+
       if (error) {
         console.error(`[Save] ❌ Supabase Error Detail:`, {
           message: error.message,
@@ -432,11 +476,15 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
         });
         throw error;
       }
-      
+
       console.log(`[Save] ✅ Save successful:`, data);
       updateSlip(id, { status: "saved" });
       setTimeout(() => {
-        setSlips(prev => prev.filter(s => s.id !== id));
+        setSlips(prev => {
+          const next = prev.filter(s => s.id !== id);
+          slipsRef.current = next;
+          return next;
+        });
       }, 2000);
     } catch (err) {
       const error = err as Error;
@@ -447,37 +495,35 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
   };
 
   const saveAll = async (bulkCategory?: string, bulkSplit?: boolean, bulkSplitBetween?: string[]) => {
-    console.log(`[SaveAll] 💾 Starting bulk save...`);
-    if (!user) {
+    const currentUser = userRef.current;
+    const currentDashboardId = selectedDashboardIdRef.current;
+
+    console.log(`[SaveAll] 💾 Starting bulk save... Dashboard: ${currentDashboardId || '(none)'}`);
+    if (!currentUser) {
       console.error("[SaveAll] Error: No user found in AuthContext");
       toast("กรุณาเข้าสู่ระบบก่อนบันทึก", "error");
       return;
     }
 
-    // Use functional state to get the actual slips to save right now
-    let slipsToSave: SlipItem[] = [];
-    setSlips(current => {
-      slipsToSave = current.filter(s => s.status === 'done');
-      return current;
-    });
+    const slipsToSave = slipsRef.current.filter(s => s.status === 'done');
 
     console.log(`[SaveAll] Found ${slipsToSave.length} slips to save`);
 
     if (slipsToSave.length === 0) {
-      setIsSavingAll(false);
+      toast("ไม่มีรายการที่พร้อมบันทึก", "info");
       return;
     }
 
     setIsSavingAll(true);
-    
-    for (const slip of slipsToSave) {
-      console.log(`[SaveAll] Saving slip: ${slip.id}`);
-      updateSlip(slip.id, { status: "saving" });
-      try {
+
+    slipsToSave.forEach(slip => updateSlip(slip.id, { status: "saving" }));
+
+    const saveResults = await Promise.allSettled(
+      slipsToSave.map(async (slip) => {
         const insertData: Partial<Transaction> = {
-          user_id: user.id,
+          user_id: currentUser.id, // ใช้จาก ref (Bug Fix)
           name: slip.result.receiver || "ไม่ระบุ",
-          amount: -Math.abs(slip.result.amount),
+          amount: -(Math.abs(Number(slip.result.amount)) || 0), // ป้องกัน NaN/String issues
           date: slip.result.date,
           category: bulkCategory || slip.result.category,
           receiver: slip.result.receiver
@@ -491,41 +537,58 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
           insertData.name = `${slip.result.receiver || "ไม่ระบุ"} (หาร ${slip.result.splitBetween.length} คน)`;
         }
 
-        if (selectedDashboardId) {
-          insertData.dashboard_id = selectedDashboardId;
+        // ใช้ currentDashboardId จาก ref เพื่อให้ได้ค่าล่าสุดเสมอ (Bug Fix)
+        if (currentDashboardId) {
+          insertData.dashboard_id = currentDashboardId;
         }
 
-        console.log(`[SaveAll] 🚀 Sending insert request to Supabase...`, insertData);
+        console.log(`[SaveAll] 🚀 Sending insert for slip ${slip.id} to dashboard: ${currentDashboardId || 'personal'}`, insertData);
         
-        console.time(`[SaveAll] Request Duration - ${slip.id}`);
         const { data, error } = await authSupabase.from('transactions').insert(insertData).select();
-        console.timeEnd(`[SaveAll] Request Duration - ${slip.id}`);
-        
+
         if (error) {
-          console.error(`[SaveAll] ❌ Supabase Error for ${slip.id}:`, {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint
-          });
+          console.error(`[SaveAll] ❌ Supabase Error for ${slip.id}:`, error);
           throw error;
         }
-        
         console.log(`[SaveAll] ✅ Success for slip: ${slip.id}`, data);
+        return slip.id;
+      })
+    );
+
+    // อัปเดต status ตามผลลัพธ์
+    let successCount = 0;
+    saveResults.forEach((result, i) => {
+      const slip = slipsToSave[i];
+      if (result.status === 'fulfilled') {
+        successCount++;
         updateSlip(slip.id, { status: "saved" });
-      } catch (err) {
-        const error = err as Error;
-        console.error(`[SaveAll] ❌ Failed: ${slip.id}`, error);
-        updateSlip(slip.id, { status: "error", error: "บันทึกล้มเหลว: " + error.message });
+      } else {
+        const errMsg = (result as any).reason?.message || "บันทึกล้มเหลว";
+        console.error(`[SaveAll] ❌ Failed: ${slip.id}`, (result as any).reason);
+        updateSlip(slip.id, { status: "error", error: "บันทึกล้มเหลว: " + errMsg });
       }
+    });
+
+    if (successCount > 0) {
+      toast(`บันทึกสำเร็จ ${successCount} รายการ`, "success");
     }
-    
-    console.log(`[SaveAll] Bulk save process finished`);
+
+    const failed = saveResults.filter(r => r.status === 'rejected').length;
+    if (failed > 0) {
+      toast(`บันทึกไม่สำเร็จ ${failed} รายการ`, "error");
+    }
+
+    console.log(`[SaveAll] Bulk save finished. Success: ${successCount}, Failed: ${failed}`);
     setIsSavingAll(false);
     setTimeout(() => {
-      setSlips(prev => prev.filter(s => s.status !== 'saved'));
+      setSlips(prev => {
+        const next = prev.filter(s => s.status !== 'saved');
+        slipsRef.current = next;
+        return next;
+      });
     }, 2000);
   };
+
 
   const value = {
     slips,
