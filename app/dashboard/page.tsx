@@ -89,7 +89,7 @@ export default function Dashboard() {
       <style>{scrollbarStyles}</style>
       <DashboardSidebar user={user} dashboards={dash.dashboards} activeDashboard={dash.activeDashboard} setActiveDashboard={dash.setActiveDashboard} setSetupMode={dash.setSetupMode} handleDeleteDashboard={dash.handleDeleteDashboard} handleLeaveDashboard={dash.handleLeaveDashboard} />
 
-      <main className="flex-1 overflow-y-auto p-4 pt-24 pb-32 md:p-8 lg:p-10 xl:p-14 md:pt-8">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 pt-24 pb-32 md:p-8 lg:p-10 xl:p-14 md:pt-8">
         <div className="max-w-[1600px] mx-auto space-y-6 md:space-y-10">
           <DashboardHeader dash={dash} tx={tx} user={user} guests={guests} />
           {dash.activeDashboard?.type === "split_bill" && guests.members.length <= 1 && <SplitBillAlert dashboardId={dash.activeDashboard.id} />}
@@ -99,7 +99,7 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
-            <div className="lg:col-span-2 xl:col-span-3 glass rounded-3xl p-5 md:p-8 border border-border bg-white dark:bg-card/50">
+            <div className="lg:col-span-2 xl:col-span-3 glass rounded-3xl p-4 md:p-8 border border-border bg-white dark:bg-card/50">
               {!Charts ? <ChartLoader /> : dash.activeDashboard?.type !== "split_bill" ? <Charts.CalendarView activeMonth={activeMonth} transactions={tx.transactions} /> : <Charts.GroupContributionChart isMounted={!!Charts} members={guests.members} transactions={tx.transactions} userId={user.id} />}
             </div>
             {Charts ? <Charts.CategoryPieChart isMounted={!!Charts} data={categoryData} totalExpense={totalExpense} /> : <div className="glass rounded-3xl p-5 md:p-8 border border-border bg-white dark:bg-card/50"><ChartLoader /></div>}

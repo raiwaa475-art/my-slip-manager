@@ -40,10 +40,27 @@ export function CalendarView({ activeMonth, transactions }: { activeMonth: Date,
   }
 
   return (
-    <div className="w-full">
-      <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-lg">ปฏิทินรายรับ-รายจ่าย</h3><div className="flex items-center gap-3"><span className="flex items-center gap-1 text-xs text-muted"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> รายรับ</span><span className="flex items-center gap-1 text-xs text-muted"><div className="w-2 h-2 rounded-full bg-pink-500"></div> รายจ่าย</span></div></div>
-      <div className="grid grid-cols-7 mb-2">{["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."].map((d, i) => <div key={i} className="text-center text-xs md:text-sm font-medium text-muted py-2">{d}</div>)}</div>
-      <div className="border-l border-t border-border/50 rounded-xl overflow-hidden bg-card">{rows}</div>
+    <div className="w-full overflow-hidden">
+      <div className="flex justify-between items-center mb-6 px-1">
+        <h3 className="font-bold text-lg">ปฏิทินรายรับ-รายจ่าย</h3>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1 text-[10px] md:text-xs text-muted"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> รายรับ</span>
+          <span className="flex items-center gap-1 text-[10px] md:text-xs text-muted"><div className="w-2 h-2 rounded-full bg-pink-500"></div> รายจ่าย</span>
+        </div>
+      </div>
+      
+      <div className="overflow-x-auto pb-2 custom-scrollbar">
+        <div className="min-w-[300px]">
+          <div className="grid grid-cols-7 mb-2 border-b border-border/30">
+            {["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."].map((d, i) => (
+              <div key={i} className="text-center text-[10px] md:text-sm font-black text-muted/60 py-2 uppercase tracking-tighter">{d}</div>
+            ))}
+          </div>
+          <div className="border-l border-t border-border/50 rounded-xl overflow-hidden bg-card/30">
+            {rows}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

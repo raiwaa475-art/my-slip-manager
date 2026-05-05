@@ -22,48 +22,48 @@ export function DashboardHeader({ dash, tx, user, guests }: {
   } 
 }) {
   return (
-    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-10 pb-6 border-b border-border/50">
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-foreground leading-none">
+    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 md:gap-10 pb-6 border-b border-border/50">
+      <div className="space-y-2 md:space-y-4">
+        <div className="flex flex-wrap items-center gap-2 md:gap-4">
+          <h1 className="text-2xl md:text-6xl font-black uppercase tracking-tighter text-foreground leading-none">
             {dash.activeDashboard ? dash.activeDashboard.name : "วิเคราะห์การเงิน"}
           </h1>
           {dash.activeDashboard && (
             <span className={cn(
-              "px-4 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm backdrop-blur-md",
+              "px-3 py-1 md:px-4 md:py-1.5 rounded-xl md:rounded-2xl text-[8px] md:text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm backdrop-blur-md",
               dash.activeDashboard.type === "split_bill" ? "bg-accent/10 text-accent border-accent/20" : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
             )}>
               {dash.activeDashboard.type === "split_bill" ? "Split Bill" : "Personal Mode"}
             </span>
           )}
         </div>
-        <p className="text-muted text-lg md:text-xl font-medium tracking-tight">
-          Welcome back, <span className="text-foreground font-black underline decoration-accent/30 decoration-8 underline-offset-4">{user.user_metadata?.full_name?.split(' ')[0] || 'User'}</span>. Here's your overview.
+        <p className="text-muted text-sm md:text-xl font-medium tracking-tight">
+          Welcome back, <span className="text-foreground font-black underline decoration-accent/30 decoration-4 md:decoration-8 underline-offset-2 md:underline-offset-4">{user.user_metadata?.full_name?.split(' ')[0] || 'User'}</span>. Here's your overview.
         </p>
       </div>
       
-      <div className="flex items-center gap-4 w-full lg:w-auto">
+      <div className="flex items-center gap-2 md:gap-3 w-full lg:w-auto">
         <button 
           onClick={() => { tx.resetForm(guests.members, guests.guestMembers); tx.setIsModalOpen(true); }} 
-          className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-accent hover:bg-accent/90 text-white px-10 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] transition-all shadow-2xl shadow-accent/20 active:scale-95"
+          className="flex-1 lg:flex-none flex items-center justify-center gap-2 md:gap-3 bg-accent hover:bg-accent/90 text-white px-4 md:px-10 py-4 md:py-5 rounded-2xl md:rounded-[2rem] font-black text-[10px] md:text-xs uppercase tracking-tight md:tracking-[0.2em] transition-all shadow-2xl shadow-accent/20 active:scale-95"
         >
-          <Plus className="w-6 h-6" /> Add Transaction
+          <Plus className="w-5 h-5 md:w-6 md:h-6 flex-shrink-0" /> <span className="truncate">Add Transaction</span>
         </button>
-        <div className="flex items-center gap-3">
-          <button onClick={() => dash.setSetupMode("join")} className="p-5 bg-card border border-border/50 rounded-2xl hover:bg-accent/5 hover:border-accent/30 transition-all shadow-sm group">
-            <Users className="w-6 h-6 text-muted group-hover:text-accent transition-colors" />
+        <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+          <button onClick={() => dash.setSetupMode("join")} className="p-3.5 md:p-5 bg-card border border-border/50 rounded-xl md:rounded-2xl hover:bg-accent/5 hover:border-accent/30 transition-all shadow-sm group">
+            <Users className="w-5 h-5 md:w-6 md:h-6 text-muted group-hover:text-accent transition-colors" />
           </button>
           {dash.activeDashboard?.type === "split_bill" && (
             <>
               <button 
                 onClick={() => window.open(`/share/${dash.activeDashboard!.id}`, '_blank')}
-                className="p-5 bg-card border border-border/50 rounded-2xl hover:bg-accent/5 hover:border-accent/30 transition-all text-muted hover:text-accent shadow-sm group"
+                className="p-3.5 md:p-5 bg-card border border-border/50 rounded-xl md:rounded-2xl hover:bg-accent/5 hover:border-accent/30 transition-all text-muted hover:text-accent shadow-sm group"
                 title="แชร์สรุปยอดหนี้"
               >
-                <Share2 className="w-6 h-6 group-hover:scale-110 transition-transform" />
+                <Share2 className="w-5 h-5 md:w-6 md:h-6 group-hover:scale-110 transition-transform" />
               </button>
-              <button onClick={() => guests.setIsSettingsOpen(true)} className="p-5 bg-card border border-border/50 rounded-2xl hover:bg-accent/5 hover:border-accent/30 transition-all text-muted hover:text-accent shadow-sm group">
-                <PiggyBank className="w-6 h-6 group-hover:scale-110 transition-transform" />
+              <button onClick={() => guests.setIsSettingsOpen(true)} className="p-3.5 md:p-5 bg-card border border-border/50 rounded-xl md:rounded-2xl hover:bg-accent/5 hover:border-accent/30 transition-all text-muted hover:text-accent shadow-sm group">
+                <PiggyBank className="w-5 h-5 md:w-6 md:h-6 group-hover:scale-110 transition-transform" />
               </button>
             </>
           )}

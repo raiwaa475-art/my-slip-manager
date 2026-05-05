@@ -14,18 +14,18 @@ export function useDebts(user: User | null, transactions: Transaction[], members
     const balances: Record<string, number> = {};
 
     const result = calculateGroupDebts(transactions);
-    const { allTransfers } = result;
-
+    const transfers = result.allTransfers || [];
+    
     // 4. Filter for current user
-    const owes: DebtItem[] = allTransfers
+    const owes: DebtItem[] = transfers
       .filter(t => t.from === user.id)
       .map(t => ({ userId: t.to, amount: t.amount, isGuest: t.to.startsWith('guest:') }));
 
-    const owed: DebtItem[] = allTransfers
+    const owed: DebtItem[] = transfers
       .filter(t => t.to === user.id)
       .map(t => ({ userId: t.from, amount: t.amount, isGuest: t.from.startsWith('guest:') }));
 
-    setDebts({ owes, owed, allTransfers });
+    setDebts({ owes, owed, allTransfers: transfers });
   }, [user, dashboardType, transactions]);
 
   useEffect(() => {

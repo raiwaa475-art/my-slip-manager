@@ -161,26 +161,21 @@ export default function SharePage() {
             <p className="text-[10px] font-bold text-accent uppercase tracking-widest">{dashboard.name}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-           <div className="hidden md:block px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-[10px] font-black uppercase tracking-widest">
-              Shareable Summary
-           </div>
-        </div>
       </nav>
-
-      <main className="max-w-4xl mx-auto p-6 pt-28 space-y-8">
-        <div className="glass rounded-[2.5rem] p-8 md:p-12 border border-border bg-white dark:bg-card/50 relative overflow-hidden">
+ 
+      <main className="max-w-4xl mx-auto px-4 md:px-6 pt-24 md:pt-28 pb-10 space-y-6 md:space-y-8">
+        <div className="glass rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-12 border border-border bg-white dark:bg-card/50 relative overflow-hidden">
           <div className="absolute -right-20 -top-20 w-64 h-64 bg-accent/5 rounded-full blur-3xl" />
           <div className="relative z-10">
-            <p className="text-[10px] font-black text-accent uppercase tracking-[0.2em] mb-4">โปรดเลือกชื่อของคุณเพื่อดูยอดที่ต้องจ่าย</p>
+            <p className="text-[10px] font-black text-accent uppercase tracking-[0.15em] md:tracking-[0.2em] mb-4">โปรดเลือกชื่อของคุณเพื่อดูยอดที่ต้องจ่าย</p>
             
-            <div className="flex flex-wrap gap-2 mb-8">
+            <div className="flex flex-wrap gap-2 mb-6 md:mb-8">
                {members.map(id => (
                  <button 
                   key={id}
                   onClick={() => setSelectedMemberId(id === selectedMemberId ? null : id)}
                   className={cn(
-                    "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all",
+                    "px-3 py-2 md:px-4 md:py-2 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest border transition-all",
                     selectedMemberId === id 
                       ? "bg-accent text-white border-accent shadow-lg shadow-accent/20" 
                       : "bg-card text-muted border-border hover:border-accent/50"
@@ -190,20 +185,20 @@ export default function SharePage() {
                  </button>
                ))}
             </div>
-
+ 
             {selectedMemberId ? (
               <div className="space-y-2 animate-in slide-in-from-bottom-4 duration-500">
-                <h2 className="text-4xl md:text-6xl font-black tracking-tighter uppercase leading-none">
+                <h2 className="text-2xl md:text-6xl font-black tracking-tighter uppercase leading-tight md:leading-none">
                   {myTotalOwes > 0 ? `คุณต้องจ่าย ฿${myTotalOwes.toLocaleString()}` : "คุณไม่มียอดค้างชำระ"}
                 </h2>
-                <p className="text-muted text-lg font-medium">
+                <p className="text-muted text-sm md:text-lg font-medium">
                   {myTotalOwes > 0 ? "กดดู QR หรือเลขบัญชีเพื่อโอนเงินคืนเพื่อน" : "ยอดเงินของคุณเรียบร้อยดีแล้ว"}
                 </p>
               </div>
             ) : (
               <div className="space-y-2">
-                <h2 className="text-4xl md:text-6xl font-black tracking-tighter uppercase leading-none">สรุปยอดเงินกลุ่ม</h2>
-                <p className="text-muted text-lg font-medium">แสดงรายการหนี้ทั้งหมดและรายการโอนเงินล่าสุด</p>
+                <h2 className="text-2xl md:text-6xl font-black tracking-tighter uppercase leading-tight md:leading-none">สรุปยอดเงินกลุ่ม</h2>
+                <p className="text-muted text-sm md:text-lg font-medium">แสดงรายการหนี้ทั้งหมดและรายการโอนเงินล่าสุด</p>
               </div>
             )}
           </div>
