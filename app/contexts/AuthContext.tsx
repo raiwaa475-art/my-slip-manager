@@ -137,8 +137,16 @@ export function AuthProvider({
           );
 
           try {
-            const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
-            if (session?.user) {
+            const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+            
+            if (error) {
+               console.error("🚨 [AuthContext] getSession Error:", error.message, error.code);
+               // หาก Refresh Token หายไป ให้เคลียร์สถานะเพื่อให้ User ล็อกอินใหม่ได้
+               if (error.code === 'refresh_token_not_found' || error.status === 400) {
+                  setUser(null);
+                  localStorage.removeItem('sb-vjbzujwtwshhrisazoyx-auth-token');
+               }
+            } else if (session?.user) {
               setUser(session.user);
               await fetchDashboards(session.user.id);
             }

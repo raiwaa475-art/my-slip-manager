@@ -15,6 +15,8 @@ import { BulkSaveModal } from "./components/BulkSaveModal";
 import { SplitSettingsModal } from "./components/SplitSettingsModal";
 import { BottomNav } from "./dashboard/components/BottomNav";
 import { DashboardSidebar } from "./dashboard/components/DashboardSidebar";
+import Link from "next/link";
+import LoginPage from "./auth/login/page";
 import { cn } from "@/lib/utils";
 
 export default function Home() {
@@ -134,6 +136,19 @@ function HomeContent() {
     setBulkModalOpen(true);
   };
 
+  if (loading) {
+    return (
+      <div className="flex min-h-screen bg-background items-center justify-center">
+        <Loader2 className="w-12 h-12 text-accent animate-spin" />
+      </div>
+    );
+  }
+
+  // 🛡️ [Auth Guard] หากยังไม่ล็อกอิน ให้แสดงหน้า Login
+  if (!user) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors">
       {user && (
@@ -240,6 +255,15 @@ function HomeContent() {
                   {isSavingAll ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                   บันทึกสรุป
                 </button>
+              )}
+              {!user && (
+                <Link 
+                  href="/auth/login" 
+                  className="w-full sm:w-auto flex justify-center items-center gap-2 bg-white hover:bg-muted/10 text-accent border border-accent/20 px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95"
+                >
+                  <LayoutDashboard className="w-5 h-5" />
+                  เข้าสู่ระบบ
+                </Link>
               )}
             </div>
           </div>

@@ -81,7 +81,7 @@ export default function Dashboard() {
   }, [tx.transactions]);
 
   if (dash.loading || authLoading) return <div className="flex min-h-screen bg-background items-center justify-center"><Loader2 className="w-12 h-12 text-accent animate-spin" /></div>;
-  if (!user) return null; // ระบบ No-Auth: user จะถูกสร้างอัตโนมัติเสมอ
+  if (!user) return <LoginRequiredView />;
   if (dash.setupMode) return <SetupDashboardView dash={dash} />;
 
   return (
